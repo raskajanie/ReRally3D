@@ -7,7 +7,7 @@ Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not full
 > Based on a J2ME (Nokia) rally game, ported to modern Java with its own software/GPU 3D engine (`javax.microedition.*` compatibility layer on top of LWJGL on PC and GLES 3.0 on Android). Check the rights of the original assets in `source/res` before publishing or redistributing.
 
 ---
-
+![yo](docs/screenshot.png)
 ## Contents
 
 1. [Features](#features)
