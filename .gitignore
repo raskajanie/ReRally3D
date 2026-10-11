@@ -1,2 +1,11 @@
 .idea/
-.idea/
+build/
+Rally3D-Java21-GPU.jar
+Rally3D-Android.apk
+*.idsig
+*.log
+rally3d-parity-*.png
+hs_err_pid*.log
+tools/jdk/
+.rally3d/
+addons/
