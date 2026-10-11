@@ -50,7 +50,7 @@ SPECTATING (multiplayer): after a player finishes and the car stops, they watch 
   Network: the car state is sent 20 times/s (nextSyncTime), ping/pong is answered by the network thread (TheBluetooth.receiveLoop) - TAB shows the real RTT of the client and the host.
 
 VERSIONS (MANDATORY FOR EVERY AGENT THAT CHANGES THE GAME):
-Current version: 2.0-alpha56 (code 51)
+Current version: 2.0-alpha57 (code 52)
 After EVERY change to the game (code, resources, manifest) - raise the version. Not changing the version = a violation.
 How to pick the version (N = current whole version + 1):
   sure that everything works (built, ran, checked)  -> whole version: N.0   (e.g. 1.0 -> 2.0). No alpha/beta.
@@ -280,5 +280,10 @@ On Android the UI always follows the 3D renderer (no separate "UI renderer" item
 Safety: any GL failure x3 -> CPU renderer + resolution <= 720p (RLog "GPU renderer failed"); crash guard file gpu.trying in the data dir: if the previous run died during the first
 180 GPU frames, the next start switches the GPU renderer off (Settings -> Display / FPS -> 3D renderer re-enables). GPU renderer setting key: gpuRaster, V-sync key: vsync.
 NOT verified on a device when this was written (no GPU in the build sandbox): compile + GLSL ES validation (glslangValidator) only. Check the log for [gpu] lines on first run.
+
+alpha57: PC FULLSCREEN TASKBAR FIX (not run here -> alpha; PC compiles, headless only)
+  - Borderless fullscreen = oversized decorated window (alpha56 trick, avoids destroying the GL peer). Windows does not hide the taskbar for such a window -> the taskbar covered the bottom strip.
+  - GameWindow.raiseOverTaskbar: while fullscreen and focused -> setAlwaysOnTop(true) + toFront (on focus gain and after every applyModeNow). dropTopmost on focus loss / leaving fullscreen, so Alt+Tab to other windows works.
+  - Binary prebuilt manifest was stale (alpha55 / code 50): patched to alpha57 / code 52 (UTF-16 string pool + versionCode attribute).
 
 README.md = public GitHub docs (build, controls, settings, add-ons, modding). Keep its version line and settings tables in sync when you change them.

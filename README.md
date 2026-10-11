@@ -2,7 +2,7 @@
 
 3D rally racing game for **PC (Java 21, Windows)** and **Android (8.0+)**. Single player (Championship, Time Trial, Ghost Race), **LAN multiplayer up to 32 players**, **add-ons** (cars, skins, wheels, maps) and a built-in **Map Editor**.
 
-Current version: **2.0-alpha56** (code 51). Alpha = built and compiled, not fully tested on every device.
+Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not fully tested on every device.
 
 > Based on a J2ME (Nokia) rally game, ported to modern Java with its own software/GPU 3D engine (`javax.microedition.*` compatibility layer on top of LWJGL on PC and GLES 3.0 on Android). Check the rights of the original assets in `source/res` before publishing or redistributing.
 
@@ -152,7 +152,7 @@ Main menu -> **Settings**. Items marked *(PC)* / *(Android)* exist only there. S
 |---|---|
 | **Resolution** | Internal render resolution, 27 presets. Output is scaled to the window/screen. |
 | **Frame limit** | 30...1000 FPS, `Custom value...`, or **Unlimited**. |
-| **Fullscreen window (borderless)** *(PC)* | Borderless fullscreen. Also F11 / Alt+Enter. |
+| **Fullscreen window (borderless)** *(PC)* | Borderless fullscreen, drawn above the Windows taskbar while the game has focus (Alt+Tab works normally). Also F11 / Alt+Enter. |
 | **FPS counter** | Shows FPS. If FPS sits exactly on your monitor refresh rate with the limit off, the log warns that driver V-sync is forcing it (turn V-sync off for `java.exe` in the GPU control panel). |
 | **Anti-aliasing** | Off / FXAA / FXAA Quality (FXAA 3.11 shader on GPU, CPU fallback otherwise). |
 | **3D renderer** | **GPU** (default) = OpenGL (PC) / GLES 3.0 (Android). **Software (multi-core)** = CPU raster, a fallback if the GPU path misbehaves. On repeated GPU failures the game switches to software by itself. |

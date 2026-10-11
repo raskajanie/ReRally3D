@@ -1,12 +1,19 @@
-.idea/
-build/
-Rally3D-Java21-GPU.jar
-Rally3D-Android.apk
+# build output
+# bundled JDK is 140+ MB (GitHub limit is 100 MB per file): install JDK 21 or unpack Temurin 21 into tools/jdk
+# local saves / add-ons / exports, never commit
+# runtime files (logs contain machine paths)
 *.idsig
+*.lck
 *.log
-rally3d-parity-*.png
-hs_err_pid*.log
-tools/jdk/
+.idea/
 .rally3d/
+Rally3D-Android.apk
+Rally3D-Java21-GPU.jar
 addons/
+build/
 fix-*.bat
+hs_err_pid*.log
+rally3d-parity-*.png
+tools/jdk/
+*.log
+*.lck
