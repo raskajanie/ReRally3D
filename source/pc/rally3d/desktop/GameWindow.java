@@ -83,8 +83,19 @@ final class GameWindow extends JFrame {
             public void windowClosing(WindowEvent e) { Platform.exit(); }
         });
         addWindowFocusListener(new WindowFocusListener() {
-            public void windowGainedFocus(WindowEvent e) { updateMouseLookCapture(); raiseOverTaskbar(); }
-            public void windowLostFocus(WindowEvent e) { releaseMouseLookCapture(); releaseAllKeys(); dropTopmost(); }
+            public void windowGainedFocus(WindowEvent e) { LogConsole.info("window", "focus gained fs=" + Platform.fullscreen + " top=" + isAlwaysOnTop()); updateMouseLookCapture(); SwingUtilities.invokeLater(new Runnable() { public void run() { if ((getExtendedState() & java.awt.Frame.ICONIFIED) != 0) setExtendedState(getExtendedState() & ~java.awt.Frame.ICONIFIED); raiseOverTaskbar(false); } }); }
+            public void windowLostFocus(final WindowEvent e) {
+                final java.awt.Window opp = e.getOppositeWindow();
+                LogConsole.info("window", "focus lost fs=" + Platform.fullscreen + " top=" + isAlwaysOnTop() + " opposite=" + (opp == null ? "native/other app" : opp.getClass().getSimpleName()));
+                releaseMouseLookCapture(); releaseAllKeys();
+                // alpha58: setAlwaysOnTop(false) made Windows hand focus straight back (regained ~25 ms later). Keep topmost, minimize instead when another app took focus.
+                if (Platform.fullscreen && opp == null) {
+                    SwingUtilities.invokeLater(new Runnable() { public void run() {
+                        try { setExtendedState(getExtendedState() | java.awt.Frame.ICONIFIED); LogConsole.info("window", "iconified (fullscreen focus lost to another app)"); }
+                        catch (Exception ex) { LogConsole.warning("window", "iconify failed", ex); }
+                    } });
+                }
+            }
         });
         panel.setFocusable(true);
         panel.setFocusTraversalKeysEnabled(false);
@@ -128,6 +139,10 @@ final class GameWindow extends JFrame {
                 dispatchWheel(e);
             }
         });
+        try {
+            java.io.File jf = new java.io.File(GameWindow.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            LogConsole.info("window", "BUILD focus-fix-3 (iconify on focus loss) jar=" + jf.getAbsolutePath() + " modified=" + new java.util.Date(jf.lastModified()));
+        } catch (Exception ex) { LogConsole.info("window", "BUILD focus-fix-3 (jar path unknown)"); }
         applyModeNow();
     }
 
@@ -531,23 +546,23 @@ final class GameWindow extends JFrame {
     }
 
     /** alpha57: borderless fullscreen = oversized decorated window, Windows does not hide the taskbar for it. Topmost + toFront puts the window over the taskbar. */
-    private void raiseOverTaskbar() {
+    private void raiseOverTaskbar(boolean force) {
         try {
             if (!Platform.fullscreen || !isDisplayable() || !isVisible()) return;
             if (!isAlwaysOnTop()) setAlwaysOnTop(true);
-            toFront();
+            if (force) toFront(); // alpha58: toFront on focus-gain stole focus back after Alt+Tab; only force on mode switch
         } catch (Exception ex) { LogConsole.warning("window", "raiseOverTaskbar failed", ex); }
     }
 
     /** Topmost only while the game has focus and is fullscreen: Alt+Tab to other windows works normally. */
     private void dropTopmost() {
-        try { if (isAlwaysOnTop()) setAlwaysOnTop(false); }
+        try { if (isAlwaysOnTop() && !isFocused()) setAlwaysOnTop(false); }
         catch (Exception ex) { LogConsole.warning("window", "dropTopmost failed", ex); }
     }
 
     private void applyModeNow() {
         boolean fs = Platform.fullscreen;
-        if (!fs) dropTopmost();
+        if (!fs) { try { if (isAlwaysOnTop()) setAlwaysOnTop(false); } catch (Exception ignored) { } }
         GraphicsDevice dev = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
         Rectangle screen = dev.getDefaultConfiguration().getBounds();
         boolean wasVisible = isVisible();
@@ -570,7 +585,7 @@ final class GameWindow extends JFrame {
                 setVisible(true);
             }
             if (!isVisible()) setVisible(true);
-            if (fs) raiseOverTaskbar();
+            if (fs) raiseOverTaskbar(true);
             gpuSurface.requestFocusInWindow();
             panel.repaint();
             return;
@@ -591,7 +606,7 @@ final class GameWindow extends JFrame {
             setLocation(usable.x + Math.max(0, (usable.width - getWidth()) / 2), usable.y + Math.max(0, (usable.height - getHeight()) / 2));
         }
         setVisible(true);
-        if (fs) raiseOverTaskbar();
+        if (fs) raiseOverTaskbar(true);
         (gpuFailed ? softwarePanel : gpuSurface).requestFocusInWindow();
         panel.repaint();
     }
