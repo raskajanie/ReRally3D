@@ -16,6 +16,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) { /*T*/ final long $t = rally3d.core.Trace.in(204); try {
         super.onCreate(b);
+        Gamepad.start(this);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);  // keyboard overlays, surface never resizes
@@ -65,6 +66,8 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == Platform.ADDON_PICK_REQUEST) Platform.onAddonPicked(resultCode == RESULT_OK ? data : null);
         else if (requestCode == Platform.ADDON_EXPORT_REQUEST) Platform.onAddonExported(resultCode == RESULT_OK ? data : null);
+        else if (requestCode == Platform.FILE_PICK_REQUEST) Platform.onFilePicked(resultCode == RESULT_OK ? data : null);
+        else if (requestCode == Platform.LOG_EXPORT_REQUEST) Platform.onLogExported(resultCode == RESULT_OK ? data : null);
      } finally { rally3d.core.Trace.out(294, $t); } }
 
     private void startGame() { /*T*/ final long $t = rally3d.core.Trace.in(623); try {
@@ -127,6 +130,11 @@ public class MainActivity extends Activity {
         if (hasFocus) immersive();
      } finally { rally3d.core.Trace.out(214, $t); } }
 
+    @Override public boolean onGenericMotionEvent(android.view.MotionEvent ev) {
+        if (Gamepad.onMotion(ev)) return true;
+        return super.onGenericMotionEvent(ev);
+    }
+
     @Override protected void onPause() { /*T*/ final long $t = rally3d.core.Trace.in(215); try {
         super.onPause();
         Platform.gpuTryEnd();   // a clean pause = the GPU start did not crash the process
@@ -139,12 +147,14 @@ public class MainActivity extends Activity {
     @Override protected void onResume() { /*T*/ final long $t = rally3d.core.Trace.in(216); try {
         super.onResume();
         rally3d.core.RLog.i("app", "onResume");
+        Gamepad.refresh();
         Watchdog.setForeground(true);
         if (view != null) view.onAppResume();
      } finally { rally3d.core.Trace.out(216, $t); } }
 
     @Override protected void onDestroy() { /*T*/ final long $t = rally3d.core.Trace.in(217); try {
         super.onDestroy();
+        Gamepad.stop();
         try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); } catch (Throwable ignored) { rally3d.core.RLog.caught("MainActivity.onDestroy", ignored); }
         rally3d.core.RLog.i("app", "onDestroy (finishing=" + isFinishing() + ")");
         if (isFinishing()) { javax.microedition.media.Manager.closeAll(); Watchdog.sessionEnd(); }
@@ -158,10 +168,13 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_S: return -2;
             case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_A: return -3;
             case KeyEvent.KEYCODE_DPAD_RIGHT: case KeyEvent.KEYCODE_D: return -4;
-            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_BUTTON_A: return -5;
-            case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE: case KeyEvent.KEYCODE_BUTTON_B: return -7;
-            case KeyEvent.KEYCODE_SPACE: case KeyEvent.KEYCODE_BUTTON_START: return -12;
-            case KeyEvent.KEYCODE_TAB: return -13;
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_BUTTON_X: case KeyEvent.KEYCODE_BUTTON_START: return -5;
+            case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE: case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_BUTTON_Y: case KeyEvent.KEYCODE_BUTTON_SELECT: return -7;
+            case KeyEvent.KEYCODE_BUTTON_L1: return -3;
+            case KeyEvent.KEYCODE_BUTTON_R1: return -4;
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return -11;
+            case KeyEvent.KEYCODE_SPACE: return -12;
+            case KeyEvent.KEYCODE_TAB: case KeyEvent.KEYCODE_BUTTON_THUMBR: return -13;
             default:
                 if (kc >= KeyEvent.KEYCODE_0 && kc <= KeyEvent.KEYCODE_9) return 48 + (kc - KeyEvent.KEYCODE_0);
                 return 0;
@@ -209,6 +222,8 @@ public class MainActivity extends Activity {
                 return true;
             }
         }
+        if (Gamepad.onDpadKey(kc, true)) return true;   // d-pad / arrow keys: shared with the stick and hat so a menu step is not doubled
+        Gamepad.onButton(kc, true);
         int k = mapKey(kc);
         Canvas c = Platform.currentCanvas();
         if (k != 0 && c != null) { if (e.getRepeatCount() == 0) c.dispatchKey(k, true); return true; }
@@ -222,6 +237,8 @@ public class MainActivity extends Activity {
             int code = rawCode(kc);
             if (code != 0) { rc.dispatchRawKeyRelease(code, (e.isCtrlPressed() ? 1 : 0) | (e.isShiftPressed() ? 2 : 0) | (e.isAltPressed() ? 4 : 0)); return true; }
         }
+        if (Gamepad.onDpadKey(kc, false)) return true;
+        Gamepad.onButton(kc, false);
         int k = mapKey(kc);
         Canvas c = Platform.currentCanvas();
         if (k != 0 && c != null) { c.dispatchKey(k, false); return true; }

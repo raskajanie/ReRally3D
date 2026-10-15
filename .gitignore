@@ -17,3 +17,5 @@ rally3d-parity-*.png
 tools/jdk/
 *.log
 *.lck
+*.log
+*.lck

@@ -361,6 +361,7 @@ final class GameWindow extends JFrame {
     private boolean handleLogPointer(Canvas c, int x, int y, int w, int h) {
         int b = rally3d.core.LogView.hit(x, y, w, h);
         if (b == rally3d.core.LogView.BTN_LOG) { LogConsole.toggle(); return true; }
+        if (b == rally3d.core.LogView.BTN_EXPORT) { Platform.exportLog(); return true; }
         if (b == rally3d.core.LogView.BTN_TAB) {
             // mouse can't "hold" a key: the button toggles the scoreboard on/off
             boolean on = !rally3d.core.LogView.tabHeld;

@@ -8,7 +8,7 @@ import java.io.IOException;
 /**
  * Crash-safe file writing: data goes to name.tmp, is fsync'ed, the previous good file becomes name.bak, then name.tmp is renamed over name.
  * A crash, kill or power loss at any moment leaves either the old or the new complete file (plus .bak), never a half-written save.
- * Readers use readBest(): the main file if it parses, otherwise .bak.
+ * Readers try the main file first, then .bak (see candidates()).
  */
 public final class SafeFile {
     private SafeFile() {}
@@ -42,7 +42,7 @@ public final class SafeFile {
         } finally { in.close(); }
      } finally { rally3d.core.Trace.out(219, $t); } }
 
-    /** Candidate files in recovery order: main, then backup, then an interrupted write that was fully flushed. */
+    /** Candidate files in recovery order: main, then backup. */
     public static File[] candidates(File file) {
         return new File[]{file, new File(file.getPath() + ".bak")};
     }

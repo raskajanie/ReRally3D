@@ -8,7 +8,12 @@ import java.util.Vector;
 public class Localization {
     private static Localization instance = null;
     private static DataInputStream langStream = null;
-    public static final String locale = System.getProperty("microedition.locale");
+
+    /** Drops the cached stream so the next string is read in the current language (called after a language change). */
+    public static synchronized void reset() {
+        try { if (langStream != null) langStream.close(); } catch (IOException e) { rally3d.core.RLog.caught("Localization.reset", e); }
+        langStream = null;
+    }
 
     private Localization() {
     }
@@ -32,7 +37,8 @@ public class Localization {
                 instance = new Localization();
             }
             if (langStream == null) {
-                InputStream inputStream = instance.getClass().getResourceAsStream("/lang." + locale);
+                String bin = rally3d.core.Lang.binaryLocale();   // zh-CN / zh-TW keep their own binary file; the other languages translate the English strings
+                InputStream inputStream = bin == null ? null : instance.getClass().getResourceAsStream("/lang." + bin);
                 if (inputStream == null) {
                     inputStream = instance.getClass().getResourceAsStream("/lang.xx");
                 }
@@ -46,6 +52,7 @@ public class Localization {
             short s = langStream.readShort();
             langStream.skipBytes(s - n * 2 - 2);
             String string = langStream.readUTF();
+            if (rally3d.core.Lang.binaryLocale() == null) string = rally3d.core.Lang.t(string);
             if (!langStream.markSupported()) {
                 langStream.close();
                 langStream = null;

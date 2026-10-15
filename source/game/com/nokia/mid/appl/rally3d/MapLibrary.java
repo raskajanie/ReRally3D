@@ -33,7 +33,7 @@ final class MapLibrary {
 
     static int idOf(String name, String author) { /*T*/ final long $t = rally3d.core.Trace.in(459); try {
         CRC32 c = new CRC32();
-        try { c.update((name.trim().toLowerCase() + "|" + author.trim().toLowerCase()).getBytes("UTF-8")); } catch (java.io.UnsupportedEncodingException e) { RLog.caught("MapLibrary.idOf", e); }
+        try { c.update((name.trim().toLowerCase(java.util.Locale.ROOT) + "|" + author.trim().toLowerCase(java.util.Locale.ROOT)).getBytes("UTF-8")); } catch (java.io.UnsupportedEncodingException e) { RLog.caught("MapLibrary.idOf", e); }
         int id = CUSTOM_BASE + (int) (c.getValue() & 0x3FFFFE);   // never TEST_ID
         return id;
      } finally { rally3d.core.Trace.out(459, $t); } }
@@ -141,6 +141,105 @@ final class MapLibrary {
         try { SafeFile.write(f, sb.toString().getBytes("UTF-8")); } catch (IOException e) { RLog.caught("MapLibrary.saveRecords", e); RLog.e("map", "cannot save map records: " + e); }
      } finally { rally3d.core.Trace.out(467, $t); } }
 
+    // ------------------------------------------------------------------ Championship: medals and par times of custom maps
+
+    /** Medal values are the same as for stock tracks (SaveData.trackMedals): 0 gold, 1 silver, 2 bronze, 3 = unlocked / none yet. Custom maps are never locked. */
+    static final int NO_MEDAL = 3;
+    private static final HashMap<Integer, Integer> medals = new HashMap<Integer, Integer>();
+    private static boolean medalsLoaded;
+
+    private static File medalFile() { /*T*/ final long $t = rally3d.core.Trace.in(723); try {
+        File d = rally3d.desktop.Platform.addonsDir();
+        File parent = d == null ? null : d.getParentFile();
+        return parent == null ? null : new File(parent, "mapmedals.txt");
+     } finally { rally3d.core.Trace.out(723, $t); } }
+
+    private static synchronized void loadMedals() { /*T*/ final long $t = rally3d.core.Trace.in(724); try {
+        if (medalsLoaded) return;
+        medalsLoaded = true;
+        File f = medalFile();
+        if (f == null) return;
+        for (File c : SafeFile.candidates(f)) {
+            if (!c.isFile()) continue;
+            try {
+                String text = new String(SafeFile.read(c), "UTF-8");
+                for (String line : text.split("\n")) {
+                    String[] t = line.trim().split("\\|");
+                    if (t.length < 2) continue;
+                    try {
+                        int id = Integer.parseInt(t[0].trim()), m = Integer.parseInt(t[1].trim());
+                        if (isCustom(id) && m >= 0 && m < NO_MEDAL) medals.put(Integer.valueOf(id), Integer.valueOf(m));
+                    } catch (NumberFormatException e) { RLog.caught("MapLibrary.loadMedals", e); }
+                }
+                return;
+            } catch (IOException e) { RLog.caught("MapLibrary.loadMedals", e); }
+        }
+     } finally { rally3d.core.Trace.out(724, $t); } }
+
+    private static void saveMedals() { /*T*/ final long $t = rally3d.core.Trace.in(725); try {
+        File f = medalFile();
+        if (f == null) return;
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<Integer, Integer> e : medals.entrySet()) sb.append(e.getKey()).append('|').append(e.getValue()).append('\n');
+        try { SafeFile.write(f, sb.toString().getBytes("UTF-8")); }
+        catch (IOException e) { RLog.caught("MapLibrary.saveMedals", e); RLog.e("map", "cannot save map medals: " + e); }
+     } finally { rally3d.core.Trace.out(725, $t); } }
+
+    static synchronized int medalOf(int id) { /*T*/ final long $t = rally3d.core.Trace.in(726); try {
+        loadMedals();
+        Integer m = medals.get(Integer.valueOf(id));
+        return m == null ? NO_MEDAL : m.intValue();
+     } finally { rally3d.core.Trace.out(726, $t); } }
+
+    /** Keeps the better medal only. The editor test drive never earns medals. */
+    static synchronized void setMedal(int id, int medal) { /*T*/ final long $t = rally3d.core.Trace.in(727); try {
+        if (id == TEST_ID || !isCustom(id) || medal < 0 || medal >= NO_MEDAL) return;
+        loadMedals();
+        if (medalOf(id) <= medal) return;
+        medals.put(Integer.valueOf(id), Integer.valueOf(medal));
+        saveMedals();
+     } finally { rally3d.core.Trace.out(727, $t); } }
+
+    /** Forgets the cached records / medals so they are read from disk again (after a progress restore). */
+    static synchronized void reloadFromDisk() {
+        recNames.clear(); recTimes.clear(); recLoaded = false;
+        medals.clear(); medalsLoaded = false;
+    }
+
+    static synchronized boolean hasMedals() { loadMedals(); return !medals.isEmpty(); }
+
+    static synchronized void resetMedals() { loadMedals(); medals.clear(); saveMedals(); }
+
+    /**
+     * Reference ("opponent") times of a custom map for the Championship, fastest first, in 0.1 s like SaveData.defaultTimes.
+     * The map author can set them in addon.properties:  par=60,66,75,86  (seconds, 4 values, ascending).
+     * Without it they are estimated from the road length (segments).
+     */
+    static int[] parTimes(AddonPack p, int segments) { /*T*/ final long $t = rally3d.core.Trace.in(728); try {
+        if (p != null && p.mapProps != null) {
+            String v = p.mapProps.getProperty("par");
+            if (v != null) {
+                String[] t = v.split(",");
+                if (t.length == 4) {
+                    int[] out = new int[4];
+                    boolean ok = true;
+                    for (int i = 0; i < 4 && ok; i++) {
+                        try { out[i] = Math.round(Float.parseFloat(t[i].trim().replace(',', '.')) * 10f); }
+                        catch (NumberFormatException e) { RLog.caught("MapLibrary.parTimes", e); ok = false; }
+                        if (out[i] < 50 || out[i] > 36000 || (i > 0 && out[i] < out[i - 1])) ok = false;
+                    }
+                    if (ok) return out;
+                    RLog.w("map", "ignoring bad 'par' in map '" + p.name + "' (need 4 ascending seconds, e.g. par=60,66,75,86)");
+                }
+            }
+        }
+        int seg = Math.max(30, segments);
+        float[] perSegment = {3.9f, 4.3f, 4.9f, 5.7f};   // 0.1 s per road segment; roughly the average of the 12 stock tracks
+        int[] out = new int[4];
+        for (int i = 0; i < 4; i++) out[i] = Math.round(seg * perSegment[i]);
+        return out;
+     } finally { rally3d.core.Trace.out(728, $t); } }
+
     // ------------------------------------------------------------------ install
 
     /** Writes a map zip into add-ons/maps and enables it (replacing the pack with the same name + author). Returns the installed pack. */
@@ -148,7 +247,7 @@ final class MapLibrary {
         AddonPack np = AddonPack.parse(zip, null);
         if (np.error != null) throw new IOException(np.error);
         File root = AddonManager.ensureDirs();
-        if (root == null) throw new IOException("no add-ons folder");
+        if (root == null) throw new IOException(rally3d.core.Lang.t("no add-ons folder"));
         File dir = new File(root, "maps");
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("cannot create " + dir);
         String base = MapData.slug(np.name);
@@ -161,11 +260,11 @@ final class MapLibrary {
                 if (old.error != null || idOf(old) == idOf(np)) target = f;
             } catch (IOException e) { RLog.caught("MapLibrary.install", e); target = f; }
         }
-        if (target == null) throw new IOException("too many maps with this name");
+        if (target == null) throw new IOException(rally3d.core.Lang.t("too many maps with this name"));
         SafeFile.write(target, zip);
         AddonManager.rescan();
         String rel = "maps/" + target.getName();
-        for (AddonPack p : AddonManager.packs) if (rel.equals(p.file)) { if (p.error == null) AddonManager.setEnabled(p, true); RLog.i("map", "installed map '" + np.name + "' as " + rel + " (" + zip.length + " bytes)"); return p; }
+        for (AddonPack p : AddonManager.snapshot()) if (rel.equals(p.file)) { if (p.error == null) AddonManager.setEnabled(p, true); RLog.i("map", "installed map '" + np.name + "' as " + rel + " (" + zip.length + " bytes)"); return p; }
         throw new IOException("saved, but the pack was not found after rescan");
      } finally { rally3d.core.Trace.out(468, $t); } }
 }

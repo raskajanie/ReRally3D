@@ -94,7 +94,7 @@ final class MapEditor {
         if (md == null) md = new MapData();
         savedRev = md.revision;
         int screenBefore = g.screenMode;
-        g.beginMenu("Map Editor");
+        g.beginMenu(rally3d.core.Lang.t("Map Editor"));
         g.menuHeaderStatic = false;
         g.menuSlide = 0;
         g.screenMode = 2;
@@ -103,7 +103,7 @@ final class MapEditor {
         javax.microedition.lcdui.Canvas.rawPointer = true;
         g.clearRaw();
         fitAll();
-        say("Tap ? for help. Tap the road to select a segment.");
+        say(rally3d.core.Lang.t("Tap ? for help. Tap the road to select a segment."));
         int[] ev = new int[5];
         try {
             while (!exit) {
@@ -145,7 +145,7 @@ final class MapEditor {
     }
 
     private void doUndo() { /*T*/ final long $t = rally3d.core.Trace.in(390); try {
-        if (undo.isEmpty()) { say("Nothing to undo"); return; }
+        if (undo.isEmpty()) { say(rally3d.core.Lang.t("Nothing to undo")); return; }
         redo.add(md.copy());
         md.restore(undo.remove(undo.size() - 1));
         thumbTheme = -9;
@@ -153,7 +153,7 @@ final class MapEditor {
      } finally { rally3d.core.Trace.out(390, $t); } }
 
     private void doRedo() { /*T*/ final long $t = rally3d.core.Trace.in(391); try {
-        if (redo.isEmpty()) { say("Nothing to redo"); return; }
+        if (redo.isEmpty()) { say(rally3d.core.Lang.t("Nothing to redo")); return; }
         undo.add(md.copy());
         md.restore(redo.remove(redo.size() - 1));
         thumbTheme = -9;
@@ -346,12 +346,12 @@ final class MapEditor {
             float[] old = md.sampleCtrl();
             int before = md.n;
             int added = md.extendToward(wx, wz);
-            if (added <= 0) { cancelPush(); say("Too close to the road end, or behind it"); return; }
+            if (added <= 0) { cancelPush(); say(rally3d.core.Lang.t("Too close to the road end, or behind it")); return; }
             md.refitAfterResize(old, before, added);
             setSel(before, md.n - 1);
-            say("+" + added + " segments (" + md.n + " total)");
+            say("+" + added + rally3d.core.Lang.t(" segments (") + md.n + rally3d.core.Lang.t(" total)"));
         } else {
-            say("Tap the road to select a segment");
+            say(rally3d.core.Lang.t("Tap the road to select a segment"));
         }
      } finally { rally3d.core.Trace.out(402, $t); } }
 
@@ -444,7 +444,7 @@ final class MapEditor {
         if (id == A_TURNR) { push(); md.addYaw(selA, selB, 3); return; }
         if (id == A_STRAIGHT) { push(); md.setYaw(selA, selB, 0); return; }
         if (id == A_DELETE) { deleteRange(selA, selB); return; }
-        if (id == A_TRIM) { if (selB >= md.n - 1) say("Nothing after the selection"); else deleteRange(selB + 1, md.n - 1); return; }
+        if (id == A_TRIM) { if (selB >= md.n - 1) say(rally3d.core.Lang.t("Nothing after the selection")); else deleteRange(selB + 1, md.n - 1); return; }
         if (id >= A_H && id < A_H + 8) { heightOp(id - A_H); return; }
         if (id >= A_TERR && id < A_TERR + 5) { push(); md.setTerrain(selA, selB, MapData.TERRAIN[id - A_TERR]); return; }
         if (id == A_CENTER || id == A_CENTER + 1) { push(); md.setCenter(selA, selB, id - A_CENTER); return; }
@@ -458,15 +458,15 @@ final class MapEditor {
         if (id >= A_LANE && id < A_LANE + 4) { propLane = id - A_LANE; return; }
         if (id >= A_EVERY && id < A_EVERY + EVERY.length) { propEvery = EVERY[id - A_EVERY]; return; }
         if (id == A_APPLY) {
-            if (propSprite == -9) { say("Pick a sprite first"); return; }
+            if (propSprite == -9) { say(rally3d.core.Lang.t("Pick a sprite first")); return; }
             push(); md.paintProps(selA, selB, propSide, propSprite, propLane, propEvery);
-            say(propSprite == -2 ? "Props removed" : "Props placed on " + (selB - selA + 1) + " segments");
+            say(propSprite == -2 ? rally3d.core.Lang.t("Props removed") : rally3d.core.Lang.t("Props placed on ") + (selB - selA + 1) + rally3d.core.Lang.t(" segments"));
             return;
         }
         if (id == A_CLEARP) { push(); md.paintProps(selA, selB, 2, -2, 0, 1); return; }
         if (id >= A_PAINTSPR && id < A_PAINTSPR + 4) { openSpritePainter(id - A_PAINTSPR); return; }
-        if (id >= A_CP && id < A_CP + 4) { push(); md.cp[id - A_CP] = selA; md.touch(); String bad = md.validate(); say(bad == null ? "Marker set at segment " + selA : bad); return; }
-        if (id == A_CPAUTO) { push(); md.cp[3] = -1; md.autoCheckpoints(); say("Checkpoints spread evenly"); return; }
+        if (id >= A_CP && id < A_CP + 4) { push(); md.cp[id - A_CP] = selA; md.touch(); String bad = md.validate(); say(bad == null ? rally3d.core.Lang.t("Marker set at segment ") + selA : bad); return; }
+        if (id == A_CPAUTO) { push(); md.cp[3] = -1; md.autoCheckpoints(); say(rally3d.core.Lang.t("Checkpoints spread evenly")); return; }
         if (id >= A_CPGO && id < A_CPGO + 5) { int k = id - A_CPGO; int s = k == 0 ? MapData.START_SEG : md.effCp(k - 1); setSel(s, s); centerOn(s); return; }
         if (id >= A_THEME && id < A_THEME + 4) { push(); md.theme = id - A_THEME; md.touch(); return; }
         if (id >= A_BG && id < A_BG + 6) {
@@ -502,22 +502,22 @@ final class MapEditor {
         int pos = at;
         for (int[] part : PIECES[k]) { int b = md.n; md.insertArc(pos, part[0], part[1]); pos += md.n - b; }
         int added = md.n - before;
-        if (added <= 0) { cancelPush(); say("Map is at the size limit (" + MapData.MAX_SEGS + ")"); return; }
+        if (added <= 0) { cancelPush(); say(rally3d.core.Lang.t("Map is at the size limit (") + MapData.MAX_SEGS + ")"); return; }
         md.refitAfterResize(old, at, added);
         setSel(at, at + added - 1);
-        say(PIECE_NAMES[k] + ": +" + added + " segments");
+        say(rally3d.core.Lang.t(PIECE_NAMES[k]) + ": +" + added + rally3d.core.Lang.t(" segments"));
      } finally { rally3d.core.Trace.out(408, $t); } }
 
     private void deleteRange(int a, int b) { /*T*/ final long $t = rally3d.core.Trace.in(409); try {
         int cnt = b - a + 1;
-        if (md.n - cnt < MapData.MIN_SEGS) { say("A map needs at least " + MapData.MIN_SEGS + " segments"); return; }
+        if (md.n - cnt < MapData.MIN_SEGS) { say(rally3d.core.Lang.t("A map needs at least ") + MapData.MIN_SEGS + rally3d.core.Lang.t(" segments")); return; }
         push();
         float[] old = md.sampleCtrl();
         md.delete(a, b);
         md.refitAfterResize(old, a, -cnt);
         clampSel();
         setSel(Math.max(0, a - 1), Math.max(0, a - 1));
-        say("Deleted " + cnt + " segments");
+        say(rally3d.core.Lang.t("Deleted ") + cnt + rally3d.core.Lang.t(" segments"));
      } finally { rally3d.core.Trace.out(409, $t); } }
 
     private void heightOp(int op) { /*T*/ final long $t = rally3d.core.Trace.in(410); try {
@@ -560,7 +560,7 @@ final class MapEditor {
 
     /** Re-establishes the editor screen after something else (text menu, test drive) used the menu machinery. */
     private void reenter() { /*T*/ final long $t = rally3d.core.Trace.in(412); try {
-        g.beginMenu("Map Editor");
+        g.beginMenu(rally3d.core.Lang.t("Map Editor"));
         g.menuHeaderStatic = false;
         g.menuSlide = 0;
         g.screenMode = 2;
@@ -573,13 +573,13 @@ final class MapEditor {
      } finally { rally3d.core.Trace.out(412, $t); } }
 
     private void editInfo(int which) { /*T*/ final long $t = rally3d.core.Trace.in(413); try {
-        String[] titles = {"Map name", "Author", "Description"};
-        String[] pre = {"Name: ", "Author: ", "Text: "};
+        String[] titles = {rally3d.core.Lang.t("Map name"), rally3d.core.Lang.t("Author"), rally3d.core.Lang.t("Description")};
+        String[] pre = {rally3d.core.Lang.t("Name: "), rally3d.core.Lang.t("Author: "), rally3d.core.Lang.t("Text: ")};
         int[] max = {24, 24, 60};
         String cur = which == 0 ? md.name : which == 1 ? md.author : md.desc;
         String v = askText(titles[which], pre[which], cur, max[which]);
         if (v == null) return;
-        if (which == 0 && v.length() == 0) { say("The name cannot be empty"); return; }
+        if (which == 0 && v.length() == 0) { say(rally3d.core.Lang.t("The name cannot be empty")); return; }
         if (v.equals(cur)) return;
         push();
         if (which == 0) md.name = v; else if (which == 1) md.author = v; else md.desc = v;
@@ -600,10 +600,10 @@ final class MapEditor {
     private void openSpritePainter(int slot) { /*T*/ final long $t = rally3d.core.Trace.in(415); try {
         palette = null;
         int[] px = md.spritePx[slot];
-        if (px != null) { painter = new Painter(this, Painter.K_SPRITE, slot, px.clone(), md.spriteW[slot], md.spriteH[slot], true, "SPRITE " + (slot + 1)); return; }
+        if (px != null) { painter = new Painter(this, Painter.K_SPRITE, slot, px.clone(), md.spriteW[slot], md.spriteH[slot], true, rally3d.core.Lang.t("SPRITE ") + (slot + 1)); return; }
         // new sprite: choose a size first
-        listTitle = "NEW SPRITE " + (slot + 1) + " - SIZE";
-        listItems = new String[]{"BUSH 32x24", "SHRUB 32x32", "TREE 40x64", "TALL TREE 48x96", "POLE 16x48"};
+        listTitle = rally3d.core.Lang.t("NEW SPRITE ") + (slot + 1) + rally3d.core.Lang.t(" - SIZE");
+        listItems = new String[]{rally3d.core.Lang.t("BUSH 32x24"), rally3d.core.Lang.t("SHRUB 32x32"), rally3d.core.Lang.t("TREE 40x64"), rally3d.core.Lang.t("TALL TREE 48x96"), rally3d.core.Lang.t("POLE 16x48")};
         listKind = LK_SPRSIZE + slot * 10;
         listScroll = 0;
      } finally { rally3d.core.Trace.out(415, $t); } }
@@ -617,7 +617,7 @@ final class MapEditor {
             px = stockImage(dir + "/background.png", wh);
             if (px == null || wh[0] != 128 || wh[1] != 128) { px = new int[128 * 128]; java.util.Arrays.fill(px, md.skyColor() | 0xFF000000); }
         }
-        painter = new Painter(this, Painter.K_BG, 0, px, 128, 128, false, "BACKGROUND");
+        painter = new Painter(this, Painter.K_BG, 0, px, 128, 128, false, rally3d.core.Lang.t("BACKGROUND"));
      } finally { rally3d.core.Trace.out(416, $t); } }
 
     private void openRoadPainter() { /*T*/ final long $t = rally3d.core.Trace.in(417); try {
@@ -627,7 +627,7 @@ final class MapEditor {
             px = stockImage(MapData.THEME_DIRS[md.roadFrom >= 0 ? md.roadFrom : md.theme] + "/squares.png", wh);
             if (px == null || wh[0] != 256 || wh[1] != 32) { px = new int[256 * 32]; java.util.Arrays.fill(px, 0xFF707070); }
         }
-        painter = new Painter(this, Painter.K_ROAD, 0, px, 256, 32, false, "ROAD TEXTURE");
+        painter = new Painter(this, Painter.K_ROAD, 0, px, 256, 32, false, rally3d.core.Lang.t("ROAD TEXTURE"));
      } finally { rally3d.core.Trace.out(417, $t); } }
 
     int[] stockImage(String path, int[] wh) { /*T*/ final long $t = rally3d.core.Trace.in(418); try {
@@ -679,9 +679,9 @@ final class MapEditor {
             } else if (p.kind == Painter.K_BG) { md.bgPng = PngCodec.encode(p.px, p.w, p.h); md.bgFrom = -1; }
             else { md.roadPng = PngCodec.encode(p.px, p.w, p.h); md.roadFrom = -1; }
             md.touch();
-            say("Image saved in the map");
+            say(rally3d.core.Lang.t("Image saved in the map"));
         } catch (java.io.IOException e) { RLog.caught("MapEditor.painterDone", e);
-            say("Cannot store the image: " + e.getMessage());
+            say(rally3d.core.Lang.t("Cannot store the image: ") + e.getMessage());
         }
         painter = null;
      } finally { rally3d.core.Trace.out(420, $t); } }
@@ -700,27 +700,27 @@ final class MapEditor {
     private ArrayList<AddonPack> openList;
 
     private void fileMenu() { /*T*/ final long $t = rally3d.core.Trace.in(421); try {
-        listTitle = "FILE";
-        listItems = new String[]{"Save + install map", "Export zip...", "Test drive", "Fly view", "Map info (name, author, text)", "New blank map", "New from a template...", "New from a stock track...", "Open an installed map...", "How to use", "Exit editor"};
+        listTitle = rally3d.core.Lang.t("FILE");
+        listItems = new String[]{rally3d.core.Lang.t("Save + install map"), rally3d.core.Lang.t("Export zip..."), rally3d.core.Lang.t("Test drive"), rally3d.core.Lang.t("Fly view"), rally3d.core.Lang.t("Map info (name, author, text)"), rally3d.core.Lang.t("New blank map"), rally3d.core.Lang.t("New from a template..."), rally3d.core.Lang.t("New from a stock track..."), rally3d.core.Lang.t("Open an installed map..."), rally3d.core.Lang.t("How to use"), rally3d.core.Lang.t("Exit editor")};
         listKind = LK_FILE; listScroll = 0;
      } finally { rally3d.core.Trace.out(421, $t); } }
 
     private void listClose() { listItems = null; listKind = 0; }
 
     private void openTemplateList() { /*T*/ final long $t = rally3d.core.Trace.in(520); try {
-        listTitle = "NEW FROM A TEMPLATE"; listItems = MapTemplates.TRACK_NAMES.clone(); listKind = LK_TRACKTPL; listScroll = 0;
+        listTitle = rally3d.core.Lang.t("NEW FROM A TEMPLATE"); listItems = rally3d.core.Lang.tl(MapTemplates.TRACK_NAMES); listKind = LK_TRACKTPL; listScroll = 0;
      } finally { rally3d.core.Trace.out(520, $t); } }
 
     private void openStockList() { /*T*/ final long $t = rally3d.core.Trace.in(521); try {
-        listTitle = "COPY A STOCK TRACK"; listItems = Texts.trackNames.clone(); listKind = LK_STOCK; listScroll = 0;
+        listTitle = rally3d.core.Lang.t("COPY A STOCK TRACK"); listItems = Texts.trackNames.clone(); listKind = LK_STOCK; listScroll = 0;
      } finally { rally3d.core.Trace.out(521, $t); } }
 
     private void openInstalledList() { /*T*/ final long $t = rally3d.core.Trace.in(522); try {
         openList = new ArrayList<AddonPack>(); AddonManager.rescan();
         for (AddonPack p : AddonManager.ofKind(0)) if (p.error == null && p.mapBin != null) openList.add(p);
-        if (openList.isEmpty()) { say("No installed maps yet - save one first"); return; }
+        if (openList.isEmpty()) { say(rally3d.core.Lang.t("No installed maps yet - save one first")); return; }
         listItems = new String[openList.size()]; for (int k = 0; k < listItems.length; k++) listItems[k] = openList.get(k).name;
-        listTitle = "OPEN A MAP"; listKind = LK_OPEN; listScroll = 0;
+        listTitle = rally3d.core.Lang.t("OPEN A MAP"); listKind = LK_OPEN; listScroll = 0;
      } finally { rally3d.core.Trace.out(522, $t); } }
 
     private void listDrag(int dy) { /*T*/ final long $t = rally3d.core.Trace.in(559); try {
@@ -756,7 +756,7 @@ final class MapEditor {
         else if (kind >= LK_SPRSIZE) {
             int slot = (kind - LK_SPRSIZE) / 10;
             int[][] sizes = {{32, 24}, {32, 32}, {40, 64}, {48, 96}, {16, 48}};
-            painter = new Painter(this, Painter.K_SPRITE, slot, new int[sizes[i][0] * sizes[i][1]], sizes[i][0], sizes[i][1], true, "SPRITE " + (slot + 1));
+            painter = new Painter(this, Painter.K_SPRITE, slot, new int[sizes[i][0] * sizes[i][1]], sizes[i][0], sizes[i][1], true, rally3d.core.Lang.t("SPRITE ") + (slot + 1));
         }
      } finally { rally3d.core.Trace.out(422, $t); } }
 
@@ -788,16 +788,16 @@ final class MapEditor {
          "Colours: palette, RGB sliders or HEX. IMPORT reads PNG files from the folder addons/import (Android: Android/data/com.rally3d.android/files/addons/import).",
          "Backgrounds repeat left-right, so use the seamless templates. Road atlas = 8 tiles of 32 px: tile 0 plain road, tile 5 road with the centre line, the rest is the roadside."},
         {"SAVE installs the map: it is listed FIRST in Time Trial, Ghost Race and Multiplayer. EXPORT ZIP writes a copy anywhere (PC dialog / Android save dialog).",
-         "Give the zip to anybody: Add-ons > + ZIP. Map zips can be up to 600 KB (Android imports up to 700 KB).",
+         "Give the zip to anybody: Add-ons > + ZIP. There is no practical size limit for map zips.",
          "NEW FROM A TEMPLATE has 7 ready tracks to start from."}};
 
     private void help() { showHelp(0); }
 
     private void showHelp(int page) { /*T*/ final long $t = rally3d.core.Trace.in(523); try {
         helpPage = (page + HELP.length) % HELP.length;
-        dlgTitle = "HELP " + (helpPage + 1) + "/" + HELP.length + "  " + HELP_TITLES[helpPage];
-        dlgLines = HELP[helpPage];
-        dlgBtns = new String[]{"PREV", "NEXT", "CLOSE"};
+        dlgTitle = rally3d.core.Lang.t("HELP ") + (helpPage + 1) + "/" + HELP.length + "  " + rally3d.core.Lang.t(HELP_TITLES[helpPage]);
+        dlgLines = rally3d.core.Lang.tl(HELP[helpPage]);
+        dlgBtns = new String[]{rally3d.core.Lang.t("PREV"), rally3d.core.Lang.t("NEXT"), rally3d.core.Lang.t("CLOSE")};
         dlgKind = DG_HELP;
         dlgScroll = 0;
      } finally { rally3d.core.Trace.out(523, $t); } }
@@ -806,9 +806,9 @@ final class MapEditor {
     private void settle(int kind, int arg) { /*T*/ final long $t = rally3d.core.Trace.in(424); try {
         pendKind = kind; pendArg = arg;
         if (!dirty()) { proceed(); return; }
-        dlgTitle = "UNSAVED CHANGES";
-        dlgLines = new String[]{"The current map has changes that are not saved."};
-        dlgBtns = new String[]{"SAVE", "DISCARD", "CANCEL"};
+        dlgTitle = rally3d.core.Lang.t("UNSAVED CHANGES");
+        dlgLines = new String[]{rally3d.core.Lang.t("The current map has changes that are not saved.")};
+        dlgBtns = new String[]{rally3d.core.Lang.t("SAVE"), rally3d.core.Lang.t("DISCARD"), rally3d.core.Lang.t("CANCEL")};
         dlgKind = DG_DISCARD;
         dlgScroll = 0;
      } finally { rally3d.core.Trace.out(424, $t); } }
@@ -829,7 +829,7 @@ final class MapEditor {
             case 1: md = new MapData(); break;
             case 2: md = MapData.fromStock(pendArg); break;
             case 5: md = MapTemplates.track(pendArg); break;
-            case 3: { MapData m = MapData.fromPack(openList.get(pendArg)); if (m == null) { say("Cannot open this map"); return; } md = m; break; }
+            case 3: { MapData m = MapData.fromPack(openList.get(pendArg)); if (m == null) { say(rally3d.core.Lang.t("Cannot open this map")); return; } md = m; break; }
             default: exit = true; return;
         }
         undo.clear(); redo.clear();
@@ -837,7 +837,7 @@ final class MapEditor {
         selA = MapData.START_SEG + 1; selB = MapData.START_SEG + 8;
         thumbTheme = -9;
         fitAll();
-        say(pendKind == 5 ? "Template: " + md.name + " - " + md.desc : pendKind == 1 ? "New blank map" : pendKind == 2 ? "Stock track copied: " + md.name : "Opened: " + md.name);
+        say(pendKind == 5 ? rally3d.core.Lang.t("Template: ") + md.name + " - " + md.desc : pendKind == 1 ? rally3d.core.Lang.t("New blank map") : pendKind == 2 ? rally3d.core.Lang.t("Stock track copied: ") + md.name : rally3d.core.Lang.t("Opened: ") + md.name);
      } finally { rally3d.core.Trace.out(426, $t); } }
 
     boolean save() { /*T*/ final long $t = rally3d.core.Trace.in(427); try {
@@ -847,10 +847,10 @@ final class MapEditor {
             byte[] zip = md.toZip();
             AddonPack p = MapLibrary.install(zip);
             savedRev = md.revision;
-            say("Saved " + p.file + " (" + (zip.length / 1024 + 1) + " KB). First in the track lists.");
+            say(rally3d.core.Lang.t("Saved ") + p.file + " (" + (zip.length / 1024 + 1) + rally3d.core.Lang.t(" KB). First in the track lists."));
             return true;
         } catch (java.io.IOException e) { RLog.caught("MapEditor.save", e);
-            say("Cannot save: " + e.getMessage());
+            say(rally3d.core.Lang.t("Cannot save: ") + e.getMessage());
             return false;
         }
      } finally { rally3d.core.Trace.out(427, $t); } }
@@ -861,7 +861,7 @@ final class MapEditor {
         AddonPack p;
         try { p = AddonPack.parse(md.toZip(), null); }
         catch (java.io.IOException e) { RLog.caught("MapEditor.testDrive", e); say(e.getMessage()); return; }
-        if (p.error != null) { say("Map error: " + p.error); return; }
+        if (p.error != null) { say(rally3d.core.Lang.t("Map error: ") + p.error); return; }
         javax.microedition.lcdui.Canvas.rawPointer = false;
         g.mapEditor = null;
         try { g.testDriveMap(p); }
@@ -875,7 +875,7 @@ final class MapEditor {
         AddonPack p;
         try { p = AddonPack.parse(md.toZip(), null); }
         catch (java.io.IOException e) { RLog.caught("MapEditor.flyDrive", e); say(e.getMessage()); return; }
-        if (p.error != null) { say("Map error: " + p.error); return; }
+        if (p.error != null) { say(rally3d.core.Lang.t("Map error: ") + p.error); return; }
         javax.microedition.lcdui.Canvas.rawPointer = false;
         g.mapEditor = null;
         try { g.flyMap(p, Math.max(0, Math.min(md.n - 1, selA))); }
@@ -895,7 +895,7 @@ final class MapEditor {
         String saved;
         try { saved = rally3d.desktop.Platform.exportFile(MapData.slug(md.name) + ".zip", zip); }
         finally { reenter(); }
-        if (saved == null) say("Export cancelled");
+        if (saved == null) say(rally3d.core.Lang.t("Export cancelled"));
         else { say("Exported " + saved + " (" + (zip.length / 1024 + 1) + " KB). Add it in Add-ons > + ZIP"); RLog.i("map", "exported map zip " + saved + " " + zip.length + " bytes"); }
      } finally { rally3d.core.Trace.out(525, $t); } }
 
@@ -1046,23 +1046,23 @@ final class MapEditor {
 
     private void copySel() {
         clip = md.copyRange(selA, selB);
-        say("Copied " + clip.n + " segments");
+        say(rally3d.core.Lang.t("Copied ") + clip.n + rally3d.core.Lang.t(" segments"));
     }
 
     private void cutSel() { /*T*/ final long $t = rally3d.core.Trace.in(526); try {
-        if (md.n - (selB - selA + 1) < MapData.MIN_SEGS) { say("A map needs at least " + MapData.MIN_SEGS + " segments"); return; }
+        if (md.n - (selB - selA + 1) < MapData.MIN_SEGS) { say(rally3d.core.Lang.t("A map needs at least ") + MapData.MIN_SEGS + rally3d.core.Lang.t(" segments")); return; }
         clip = md.copyRange(selA, selB);
         int cnt = clip.n;
         deleteRange(selA, selB);
-        say("Cut " + cnt + " segments - Ctrl+V pastes them");
+        say(rally3d.core.Lang.t("Cut ") + cnt + rally3d.core.Lang.t(" segments - Ctrl+V pastes them"));
      } finally { rally3d.core.Trace.out(526, $t); } }
 
-    private void dupSel() { pasteClip(md.copyRange(selA, selB), "Duplicated"); }
+    private void dupSel() { pasteClip(md.copyRange(selA, selB), rally3d.core.Lang.t("Duplicated")); }
 
     /** Inserts the clipboard after the selection (height of the pasted stretch stays level). */
     private void pasteSel() { /*T*/ final long $t = rally3d.core.Trace.in(434); try {
-        if (clip == null || clip.n == 0) { say("Clipboard is empty - Ctrl+C a selection first"); return; }
-        pasteClip(clip, "Pasted");
+        if (clip == null || clip.n == 0) { say(rally3d.core.Lang.t("Clipboard is empty - Ctrl+C a selection first")); return; }
+        pasteClip(clip, rally3d.core.Lang.t("Pasted"));
      } finally { rally3d.core.Trace.out(434, $t); } }
 
     private void pasteClip(MapData.Clip clip, String verb) { /*T*/ final long $t = rally3d.core.Trace.in(563); try {
@@ -1070,10 +1070,10 @@ final class MapEditor {
         float[] old = md.sampleCtrl();
         int at = selB >= md.n - 1 ? md.n : selB + 1;
         int got = md.pasteRange(clip, at);
-        if (got <= 0) { cancelPush(); say("Map is at the size limit (" + MapData.MAX_SEGS + ")"); return; }
+        if (got <= 0) { cancelPush(); say(rally3d.core.Lang.t("Map is at the size limit (") + MapData.MAX_SEGS + ")"); return; }
         md.refitAfterResize(old, at, got);
         setSel(at, at + got - 1);
-        say(verb + " " + got + " segments");  } finally { rally3d.core.Trace.out(563, $t); } }
+        say(verb + " " + got + rally3d.core.Lang.t(" segments"));  } finally { rally3d.core.Trace.out(563, $t); } }
 
     // ------------------------------------------------------------------ drawing helpers (package-private: the painter shares them)
 
@@ -1172,42 +1172,42 @@ final class MapEditor {
         "WORLD: theme, background, road, colours, name."};
 
     private String tipFor(int id) { /*T*/ final long $t = rally3d.core.Trace.in(561); try {
-        if (id >= A_MODE && id < A_MODE + 6) return MODE_NAMES[id - A_MODE] + " mode  (key " + (id - A_MODE + 1) + ")";
-        if (id >= A_PIECE && id < A_PIECE + PIECES.length) return "Insert " + PIECE_NAMES[id - A_PIECE] + " after the selection";
+        if (id >= A_MODE && id < A_MODE + 6) return rally3d.core.Lang.t(MODE_NAMES[id - A_MODE]) + rally3d.core.Lang.t(" mode  (key ") + (id - A_MODE + 1) + ")";
+        if (id >= A_PIECE && id < A_PIECE + PIECES.length) return rally3d.core.Lang.t("Insert ") + rally3d.core.Lang.t(PIECE_NAMES[id - A_PIECE]) + rally3d.core.Lang.t(" after the selection");
         switch (id) {
-            case A_FILE: return "File menu: save, export, new, open, help  (Esc)";
-            case A_UNDO: return "Undo  (Ctrl+Z)";
-            case A_REDO: return "Redo  (Ctrl+Y)";
-            case A_TEST: return "Drive the map with a car  (Ctrl+T)";
-            case A_FLY: return "Free camera fly-through  (Ctrl+F)";
-            case A_SAVE: return "Save and install the map  (Ctrl+S)";
-            case A_HELP: return "How to use the editor  (H)";
-            case A_FIT: return "Fit the whole map in view  (F)";
-            case A_ZIN: return "Zoom in  (+ or wheel)";
-            case A_ZOUT: return "Zoom out  (- or wheel)";
-            case A_EXT: return "ON: tapping empty ground grows the road towards it";
-            case A_TURNL: return "Turn the selected segments a bit to the left";
-            case A_TURNR: return "Turn the selected segments a bit to the right";
-            case A_STRAIGHT: return "Remove all turning from the selection";
-            case A_DELETE: return "Delete the selected segments  (Del)";
-            case A_TRIM: return "Delete everything after the selection";
-            case A_COPY: return "Copy the selection  (Ctrl+C)";
-            case A_CUT: return "Cut the selection  (Ctrl+X)";
-            case A_PASTE: return "Paste after the selection  (Ctrl+V)";
-            case A_DUP: return "Duplicate the selection  (Ctrl+D)";
-            case A_ALL: return "Select the whole road  (Ctrl+A)";
-            case A_APPLY: return "Put the chosen sprite on the selected segments";
-            case A_CLEARP: return "Remove all props from the selection";
-            case A_CPAUTO: return "Spread the 3 checkpoints evenly";
-            case A_COLAUTO: return "Use the theme's own sky / ground / HUD colours";
+            case A_FILE: return rally3d.core.Lang.t("File menu: save, export, new, open, help  (Esc)");
+            case A_UNDO: return rally3d.core.Lang.t("Undo  (Ctrl+Z)");
+            case A_REDO: return rally3d.core.Lang.t("Redo  (Ctrl+Y)");
+            case A_TEST: return rally3d.core.Lang.t("Drive the map with a car  (Ctrl+T)");
+            case A_FLY: return rally3d.core.Lang.t("Free camera fly-through  (Ctrl+F)");
+            case A_SAVE: return rally3d.core.Lang.t("Save and install the map  (Ctrl+S)");
+            case A_HELP: return rally3d.core.Lang.t("How to use the editor  (H)");
+            case A_FIT: return rally3d.core.Lang.t("Fit the whole map in view  (F)");
+            case A_ZIN: return rally3d.core.Lang.t("Zoom in  (+ or wheel)");
+            case A_ZOUT: return rally3d.core.Lang.t("Zoom out  (- or wheel)");
+            case A_EXT: return rally3d.core.Lang.t("ON: tapping empty ground grows the road towards it");
+            case A_TURNL: return rally3d.core.Lang.t("Turn the selected segments a bit to the left");
+            case A_TURNR: return rally3d.core.Lang.t("Turn the selected segments a bit to the right");
+            case A_STRAIGHT: return rally3d.core.Lang.t("Remove all turning from the selection");
+            case A_DELETE: return rally3d.core.Lang.t("Delete the selected segments  (Del)");
+            case A_TRIM: return rally3d.core.Lang.t("Delete everything after the selection");
+            case A_COPY: return rally3d.core.Lang.t("Copy the selection  (Ctrl+C)");
+            case A_CUT: return rally3d.core.Lang.t("Cut the selection  (Ctrl+X)");
+            case A_PASTE: return rally3d.core.Lang.t("Paste after the selection  (Ctrl+V)");
+            case A_DUP: return rally3d.core.Lang.t("Duplicate the selection  (Ctrl+D)");
+            case A_ALL: return rally3d.core.Lang.t("Select the whole road  (Ctrl+A)");
+            case A_APPLY: return rally3d.core.Lang.t("Put the chosen sprite on the selected segments");
+            case A_CLEARP: return rally3d.core.Lang.t("Remove all props from the selection");
+            case A_CPAUTO: return rally3d.core.Lang.t("Spread the 3 checkpoints evenly");
+            case A_COLAUTO: return rally3d.core.Lang.t("Use the theme's own sky / ground / HUD colours");
             default: break;
         }
         if (id >= A_H && id < A_H + 8) {
-            String[] t = {"Raise the selected part by 10", "Lower the selected part by 10", "Make a hill over the selection", "Make a valley over the selection", "Level the selection with the point before it", "Smooth out bumps in the selection", "Set the whole road to height 0", "Fit the chart in view"};
+            String[] t = {rally3d.core.Lang.t("Raise the selected part by 10"), rally3d.core.Lang.t("Lower the selected part by 10"), rally3d.core.Lang.t("Make a hill over the selection"), rally3d.core.Lang.t("Make a valley over the selection"), rally3d.core.Lang.t("Level the selection with the point before it"), rally3d.core.Lang.t("Smooth out bumps in the selection"), rally3d.core.Lang.t("Set the whole road to height 0"), rally3d.core.Lang.t("Fit the chart in view")};
             return t[id - A_H];
         }
-        if (id >= A_CP && id < A_CP + 4) return "Put this marker on the selected segment";
-        if (id >= A_CPGO && id < A_CPGO + 5) return "Jump to this marker";
+        if (id >= A_CP && id < A_CP + 4) return rally3d.core.Lang.t("Put this marker on the selected segment");
+        if (id >= A_CPGO && id < A_CPGO + 5) return rally3d.core.Lang.t("Jump to this marker");
         return null;
      } finally { rally3d.core.Trace.out(561, $t); } }
 
@@ -1220,7 +1220,7 @@ final class MapEditor {
             }
         }
         boolean tip = t != null;
-        if (t == null) t = MODE_HINTS[mode];
+        if (t == null) t = rally3d.core.Lang.t(MODE_HINTS[mode]);
         int bw2 = vw - 8, y = vy + vh - sh - 6;
         fill(gr, vx + 4, y - 2, bw2, sh + 4, tip ? 0xE0203040 : 0xA0101820);
         if (textW(t, true) > bw2 - 8) {
@@ -1234,15 +1234,15 @@ final class MapEditor {
         fill(gr, 0, 0, W, TB, PANEL);
         gr.setColor(0x5A7088); gr.drawLine(0, TB - 1, W, TB - 1);
         int pad = W < 420 ? 8 : 12;
-        int x = 2, bh = TB - 3, bw = Math.max(28, textW("TEST", true) + pad), qw = Math.max(bh, textW("?", true) + pad);
+        int x = 2, bh = TB - 3, bw = Math.max(28, textW(rally3d.core.Lang.t("TEST"), true) + pad), qw = Math.max(bh, textW("?", true) + pad);
         // fixed positions: the buttons never jump around when REDO becomes available
-        buttonX(gr, x, 1, bw, bh, "FILE", A_FILE, 0, false, true); x += bw + 2;
-        buttonX(gr, x, 1, bw, bh, "UNDO", A_UNDO, 0, false, !undo.isEmpty()); x += bw + 2;
-        buttonX(gr, x, 1, bw, bh, "REDO", A_REDO, 0, false, !redo.isEmpty()); x += bw + 2;
+        buttonX(gr, x, 1, bw, bh, rally3d.core.Lang.t("FILE"), A_FILE, 0, false, true); x += bw + 2;
+        buttonX(gr, x, 1, bw, bh, rally3d.core.Lang.t("UNDO"), A_UNDO, 0, false, !undo.isEmpty()); x += bw + 2;
+        buttonX(gr, x, 1, bw, bh, rally3d.core.Lang.t("REDO"), A_REDO, 0, false, !redo.isEmpty()); x += bw + 2;
         int rx = W - 2 - bw;
-        button(gr, rx, 1, bw, bh, "SAVE", A_SAVE, 0, dirty()); rx -= bw + 2;
-        button(gr, rx, 1, bw, bh, "TEST", A_TEST, 0, false); rx -= bw + 2;
-        button(gr, rx, 1, bw, bh, "FLY", A_FLY, 0, false); rx -= qw + 2;
+        button(gr, rx, 1, bw, bh, rally3d.core.Lang.t("SAVE"), A_SAVE, 0, dirty()); rx -= bw + 2;
+        button(gr, rx, 1, bw, bh, rally3d.core.Lang.t("TEST"), A_TEST, 0, false); rx -= bw + 2;
+        button(gr, rx, 1, bw, bh, rally3d.core.Lang.t("FLY"), A_FLY, 0, false); rx -= qw + 2;
         button(gr, rx, 1, qw, bh, "?", A_HELP, 0, false);
         String t = md.name + (dirty() ? " *" : "");
         int room = rx - x - 8;
@@ -1257,15 +1257,15 @@ final class MapEditor {
         int bw = 26, bh = 22, x = vx + vw - bw - 3, y = vy + 3;
         button(gr, x, y, bw, bh, "+", A_ZIN, 0, false);
         button(gr, x, y + bh + 2, bw, bh, "-", A_ZOUT, 0, false);
-        button(gr, x, y + (bh + 2) * 2, bw, bh, "FIT", A_FIT, 0, false);
+        button(gr, x, y + (bh + 2) * 2, bw, bh, rally3d.core.Lang.t("FIT"), A_FIT, 0, false);
         // info line
         md.geo();
         int a = Math.max(0, Math.min(md.n - 1, selA)), b = Math.max(a, Math.min(md.n - 1, selB));
-        String info = "SEG " + a + (b > a ? "-" + b : "") + "/" + md.n + "  H " + Math.round(md.heightAt(a)) + "  GRADE " + Math.round(md.slopeAt(a) / 4 * 100) + "%  TURN " + Math.round(md.yaw[a] * MapData.DEG_PER_YAW) + "\u00B0";
+        String info = rally3d.core.Lang.t("SEG ") + a + (b > a ? "-" + b : "") + "/" + md.n + "  H " + Math.round(md.heightAt(a)) + rally3d.core.Lang.t("  GRADE ") + Math.round(md.slopeAt(a) / 4 * 100) + rally3d.core.Lang.t("%  TURN ") + Math.round(md.yaw[a] * MapData.DEG_PER_YAW) + "\u00B0";
         fill(gr, vx + 2, vy + 2, Math.min(vw - 30, textW(info, true) + 8), sh + 4, 0xB0101820);
         text(gr, info, vx + 6, vy + 4, WHITE, true);
         int steep = md.firstSteep(2.6);
-        if (steep >= 0 && mode != M_HEIGHT) text(gr, "TOO STEEP at segment " + steep + " (HEIGHT mode)", vx + 6, vy + sh + 8, RED, true);
+        if (steep >= 0 && mode != M_HEIGHT) text(gr, rally3d.core.Lang.t("TOO STEEP at segment ") + steep + rally3d.core.Lang.t(" (HEIGHT mode)"), vx + 6, vy + sh + 8, RED, true);
      } finally { rally3d.core.Trace.out(441, $t); } }
 
     private int sx(double wx) { return (int) Math.round(vx + vw / 2 - (wx - camX) * zoom); }
@@ -1435,7 +1435,7 @@ final class MapEditor {
         gr.setColor(0x5A7088); gr.drawLine(x0, TB, x0, H);
         // mode tabs (fixed)
         int tw = (PW - 6) / 2, th = sh + 7;
-        for (int m = 0; m < 6; m++) button(gr, x0 + 2 + (m % 2) * (tw + 2), TB + 2 + (m / 2) * (th + 2), tw, th, MODE_NAMES[m], A_MODE + m, 0, m == mode);
+        for (int m = 0; m < 6; m++) button(gr, x0 + 2 + (m % 2) * (tw + 2), TB + 2 + (m / 2) * (th + 2), tw, th, rally3d.core.Lang.t(MODE_NAMES[m]), A_MODE + m, 0, m == mode);
         ptop = TB + 2 + 3 * (th + 2) + 2;
         pbottom = H;
         gr.setClip(x0, ptop, PW, pbottom - ptop);
@@ -1500,58 +1500,58 @@ final class MapEditor {
      } finally { rally3d.core.Trace.out(449, $t); } }
 
     private void panelPath(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(450); try {
-        label(gr, "GROW THE ROAD");
-        pbtn(gr, extendTool ? "TAP GROUND: ON" : "TAP GROUND: OFF", A_EXT, 0, extendTool);
-        label(gr, "ADD A BEND AFTER THE SELECTION");
-        pbtn(gr, PIECE_NAMES[0], A_PIECE, 0, false);
-        for (int k = 1; k + 1 < PIECES.length; k += 2) pbtn2(gr, PIECE_NAMES[k], A_PIECE + k, false, PIECE_NAMES[k + 1], A_PIECE + k + 1, false);
-        label(gr, "SELECTION");
-        pbtn2(gr, "TURN L", A_TURNL, false, "TURN R", A_TURNR, false);
-        pbtn(gr, "MAKE STRAIGHT", A_STRAIGHT, 0, false);
-        pbtn2(gr, "DELETE", A_DELETE, false, "DEL AFTER", A_TRIM, false);
-        label(gr, "CLIPBOARD");
-        pbtn2(gr, "COPY", A_COPY, false, "CUT", A_CUT, false);
-        pbtn2(gr, "PASTE", A_PASTE, clip != null, "DUP", A_DUP, false);
-        pbtn(gr, "SELECT ALL", A_ALL, 0, false);
+        label(gr, rally3d.core.Lang.t("GROW THE ROAD"));
+        pbtn(gr, extendTool ? rally3d.core.Lang.t("TAP GROUND: ON") : rally3d.core.Lang.t("TAP GROUND: OFF"), A_EXT, 0, extendTool);
+        label(gr, rally3d.core.Lang.t("ADD A BEND AFTER THE SELECTION"));
+        pbtn(gr, rally3d.core.Lang.t(PIECE_NAMES[0]), A_PIECE, 0, false);
+        for (int k = 1; k + 1 < PIECES.length; k += 2) pbtn2(gr, rally3d.core.Lang.t(PIECE_NAMES[k]), A_PIECE + k, false, rally3d.core.Lang.t(PIECE_NAMES[k + 1]), A_PIECE + k + 1, false);
+        label(gr, rally3d.core.Lang.t("SELECTION"));
+        pbtn2(gr, rally3d.core.Lang.t("TURN L"), A_TURNL, false, rally3d.core.Lang.t("TURN R"), A_TURNR, false);
+        pbtn(gr, rally3d.core.Lang.t("MAKE STRAIGHT"), A_STRAIGHT, 0, false);
+        pbtn2(gr, rally3d.core.Lang.t("DELETE"), A_DELETE, false, rally3d.core.Lang.t("DEL AFTER"), A_TRIM, false);
+        label(gr, rally3d.core.Lang.t("CLIPBOARD"));
+        pbtn2(gr, rally3d.core.Lang.t("COPY"), A_COPY, false, rally3d.core.Lang.t("CUT"), A_CUT, false);
+        pbtn2(gr, rally3d.core.Lang.t("PASTE"), A_PASTE, clip != null, rally3d.core.Lang.t("DUP"), A_DUP, false);
+        pbtn(gr, rally3d.core.Lang.t("SELECT ALL"), A_ALL, 0, false);
         double km = md.n * 32 * 0.77 / 1000.0;
-        note(gr, md.n + " segments, about " + (Math.round(km * 10) / 10.0) + " km. Tap the road or drag the strip below to select.", DIM);
+        note(gr, md.n + rally3d.core.Lang.t(" segments, about ") + (Math.round(km * 10) / 10.0) + rally3d.core.Lang.t(" km. Tap the road or drag the strip below to select."), DIM);
      } finally { rally3d.core.Trace.out(450, $t); } }
 
     private void panelHeight(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(451); try {
-        label(gr, "SELECTION HEIGHT");
-        pbtn2(gr, "RAISE", A_H, false, "LOWER", A_H + 1, false);
-        pbtn2(gr, "HILL", A_H + 2, false, "VALLEY", A_H + 3, false);
-        pbtn2(gr, "FLATTEN", A_H + 4, false, "SMOOTH", A_H + 5, false);
-        pbtn(gr, "WHOLE ROAD FLAT", A_H + 6, 0, false);
-        pbtn(gr, "FIT VIEW", A_H + 7, 0, false);
-        note(gr, "Select a part on the strip, then use the buttons (RAISE / LOWER = 10 units) - or drag the yellow squares on the chart. Red = too steep for a car.", DIM);
+        label(gr, rally3d.core.Lang.t("SELECTION HEIGHT"));
+        pbtn2(gr, rally3d.core.Lang.t("RAISE"), A_H, false, rally3d.core.Lang.t("LOWER"), A_H + 1, false);
+        pbtn2(gr, rally3d.core.Lang.t("HILL"), A_H + 2, false, rally3d.core.Lang.t("VALLEY"), A_H + 3, false);
+        pbtn2(gr, rally3d.core.Lang.t("FLATTEN"), A_H + 4, false, rally3d.core.Lang.t("SMOOTH"), A_H + 5, false);
+        pbtn(gr, rally3d.core.Lang.t("WHOLE ROAD FLAT"), A_H + 6, 0, false);
+        pbtn(gr, rally3d.core.Lang.t("FIT VIEW"), A_H + 7, 0, false);
+        note(gr, rally3d.core.Lang.t("Select a part on the strip, then use the buttons (RAISE / LOWER = 10 units) - or drag the yellow squares on the chart. Red = too steep for a car."), DIM);
      } finally { rally3d.core.Trace.out(451, $t); } }
 
     private void panelLand(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(452); try {
-        label(gr, "ROADSIDE (SELECTION)");
+        label(gr, rally3d.core.Lang.t("ROADSIDE (SELECTION)"));
         for (int k = 0; k < 5; k++) {
             boolean on = true;
             for (int i = selA; i <= selB && i < md.n; i++) if (md.tgt[i] != MapData.TERRAIN[k]) { on = false; break; }
             if (pcy + bh() > ptop && pcy < pbottom) {
                 fill(gr, pcx, pcy, 6, bh(), TERRAIN_COLORS[k]);
-                button(gr, pcx + 8, pcy, pcw - 8, bh(), MapData.TERRAIN_NAMES[k], A_TERR + k, 0, on);
+                button(gr, pcx + 8, pcy, pcw - 8, bh(), rally3d.core.Lang.t(MapData.TERRAIN_NAMES[k]), A_TERR + k, 0, on);
             }
             pcy += bh() + 2;
         }
-        label(gr, "CENTRE LINE");
-        pbtn2(gr, "ON", A_CENTER + 1, md.cm[Math.min(selA, md.n - 1)] != 0, "OFF", A_CENTER, md.cm[Math.min(selA, md.n - 1)] == 0);
-        note(gr, "Changing the roadside blends over 2-5 segments. Colours in the strip show the terrain.", DIM);
+        label(gr, rally3d.core.Lang.t("CENTRE LINE"));
+        pbtn2(gr, rally3d.core.Lang.t("ON"), A_CENTER + 1, md.cm[Math.min(selA, md.n - 1)] != 0, rally3d.core.Lang.t("OFF"), A_CENTER, md.cm[Math.min(selA, md.n - 1)] == 0);
+        note(gr, rally3d.core.Lang.t("Changing the roadside blends over 2-5 segments. Colours in the strip show the terrain."), DIM);
      } finally { rally3d.core.Trace.out(452, $t); } }
 
     private void panelProps(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(453); try {
-        label(gr, "SIDE");
+        label(gr, rally3d.core.Lang.t("SIDE"));
         int w = (pcw - 4) / 3;
         if (pcy + bh() > ptop && pcy < pbottom) {
-            String[] sn = {"LEFT", "RIGHT", "BOTH"};
+            String[] sn = {rally3d.core.Lang.t("LEFT"), rally3d.core.Lang.t("RIGHT"), rally3d.core.Lang.t("BOTH")};
             for (int s = 0; s < 3; s++) button(gr, pcx + s * (w + 2), pcy, w, bh(), sn[s], A_SIDE + s, 0, propSide == s);
         }
         pcy += bh() + 2;
-        label(gr, "SPRITE");
+        label(gr, rally3d.core.Lang.t("SPRITE"));
         int cell = (pcw - 2) / 3;
         if (thumbTheme != md.theme) { java.util.Arrays.fill(thumbCache, null); java.util.Arrays.fill(thumbMeta, null); thumbTheme = md.theme; }
         for (int i = 0; i < SPRITE_TYPES.length; i += 3) {
@@ -1568,32 +1568,32 @@ final class MapEditor {
             pcy += cell + 1;
         }
         pcy += 2;
-        label(gr, "LANE (0 = ROAD EDGE)");
+        label(gr, rally3d.core.Lang.t("LANE (0 = ROAD EDGE)"));
         int lw = (pcw - 6) / 4;
         if (pcy + bh() > ptop && pcy < pbottom) for (int l = 0; l < 4; l++) button(gr, pcx + l * (lw + 2), pcy, lw, bh(), String.valueOf(l), A_LANE + l, 0, propLane == l);
         pcy += bh() + 2;
-        label(gr, "EVERY N SEGMENTS");
+        label(gr, rally3d.core.Lang.t("EVERY N SEGMENTS"));
         int ew = (pcw - 8) / 5;
         if (pcy + bh() > ptop && pcy < pbottom) for (int e = 0; e < EVERY.length; e++) button(gr, pcx + e * (ew + 2), pcy, ew, bh(), String.valueOf(EVERY[e]), A_EVERY + e, 0, propEvery == EVERY[e]);
         pcy += bh() + 4;
-        pbtn(gr, "PLACE ON SELECTION", A_APPLY, 0, true);
-        pbtn(gr, "CLEAR SELECTION", A_CLEARP, 0, false);
-        label(gr, "CUSTOM SPRITES");
+        pbtn(gr, rally3d.core.Lang.t("PLACE ON SELECTION"), A_APPLY, 0, true);
+        pbtn(gr, rally3d.core.Lang.t("CLEAR SELECTION"), A_CLEARP, 0, false);
+        label(gr, rally3d.core.Lang.t("CUSTOM SPRITES"));
         int pw2 = (pcw - 2) / 2;
         for (int s = 0; s < 4; s += 2) {
             if (pcy + bh() > ptop && pcy < pbottom) {
-                button(gr, pcx, pcy, pw2, bh(), (md.spritePx[s] == null ? "NEW " : "EDIT ") + (s + 1), A_PAINTSPR + s, 0, false);
-                button(gr, pcx + pw2 + 2, pcy, pw2, bh(), (md.spritePx[s + 1] == null ? "NEW " : "EDIT ") + (s + 2), A_PAINTSPR + s + 1, 0, false);
+                button(gr, pcx, pcy, pw2, bh(), (md.spritePx[s] == null ? rally3d.core.Lang.t("NEW ") : rally3d.core.Lang.t("EDIT ")) + (s + 1), A_PAINTSPR + s, 0, false);
+                button(gr, pcx + pw2 + 2, pcy, pw2, bh(), (md.spritePx[s + 1] == null ? rally3d.core.Lang.t("NEW ") : rally3d.core.Lang.t("EDIT ")) + (s + 2), A_PAINTSPR + s + 1, 0, false);
             }
             pcy += bh() + 2;
         }
-        note(gr, "Pick a sprite, then PLACE it on the selected segments. Gate = finish arch, cone = checkpoint post.", DIM);
+        note(gr, rally3d.core.Lang.t("Pick a sprite, then PLACE it on the selected segments. Gate = finish arch, cone = checkpoint post."), DIM);
      } finally { rally3d.core.Trace.out(453, $t); } }
 
     private void drawThumb(Graphics gr, int idx, int type, int cx, int cy, int cell) { /*T*/ final long $t = rally3d.core.Trace.in(454); try {
         int box = cell - 4;
-        if (type == -2) { textC(gr, "NONE", cx + cell / 2, cy + (cell - sh) / 2, WHITE, true); return; }
-        if (type == -1) { textC(gr, "RAND", cx + cell / 2, cy + (cell - sh) / 2, WHITE, true); return; }
+        if (type == -2) { textC(gr, rally3d.core.Lang.t("NONE"), cx + cell / 2, cy + (cell - sh) / 2, WHITE, true); return; }
+        if (type == -1) { textC(gr, rally3d.core.Lang.t("RAND"), cx + cell / 2, cy + (cell - sh) / 2, WHITE, true); return; }
         int[] pix = thumbCache[idx];
         int[] meta = thumbMeta[idx];
         if (pix == null || meta == null || meta[0] != box) {
@@ -1604,7 +1604,7 @@ final class MapEditor {
                 wh[0] = md.spriteW[type - 7]; wh[1] = md.spriteH[type - 7];
             } else px = stockSprite(type, md.theme, wh);
             if (px == null) {
-                if (type >= 7) { textC(gr, "NEW", cx + cell / 2, cy + cell / 2 - sh, YEL, true); textC(gr, String.valueOf(type - 6), cx + cell / 2, cy + cell / 2 + 1, DIM, true); }
+                if (type >= 7) { textC(gr, rally3d.core.Lang.t("NEW"), cx + cell / 2, cy + cell / 2 - sh, YEL, true); textC(gr, String.valueOf(type - 6), cx + cell / 2, cy + cell / 2 + 1, DIM, true); }
                 else textC(gr, "?", cx + cell / 2, cy + (cell - sh) / 2, DIM, true);
                 return;
             }
@@ -1619,37 +1619,37 @@ final class MapEditor {
      } finally { rally3d.core.Trace.out(454, $t); } }
 
     private void panelMarks(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(455); try {
-        label(gr, "MARKERS (TAP = GO)");
-        String[] names = {"START", "CHECK 1", "CHECK 2", "CHECK 3", "FINISH"};
+        label(gr, rally3d.core.Lang.t("MARKERS (TAP = GO)"));
+        String[] names = {rally3d.core.Lang.t("START"), rally3d.core.Lang.t("CHECK 1"), rally3d.core.Lang.t("CHECK 2"), rally3d.core.Lang.t("CHECK 3"), rally3d.core.Lang.t("FINISH")};
         for (int k = 0; k < 5; k++) {
             int seg = k == 0 ? MapData.START_SEG : md.effCp(k - 1);
             if (pcy + bh() > ptop && pcy < pbottom) {
                 int bw = k == 0 ? pcw : pcw - 34;
                 button(gr, pcx, pcy, bw, bh(), names[k] + "  " + seg, A_CPGO + k, 0, false);
-                if (k > 0) button(gr, pcx + bw + 2, pcy, 32, bh(), "SET", A_CP + k - 1, 0, true);
+                if (k > 0) button(gr, pcx + bw + 2, pcy, 32, bh(), rally3d.core.Lang.t("SET"), A_CP + k - 1, 0, true);
             }
             pcy += bh() + 2;
         }
-        pbtn(gr, "SPREAD EVENLY", A_CPAUTO, 0, false);
+        pbtn(gr, rally3d.core.Lang.t("SPREAD EVENLY"), A_CPAUTO, 0, false);
         String bad = md.validate();
-        note(gr, "SET puts the marker on the selected segment. The car starts at segment " + MapData.START_SEG + ".", DIM);
-        note(gr, bad == null ? "Map is ready to play." : bad, bad == null ? GREEN : RED);
+        note(gr, rally3d.core.Lang.t("SET puts the marker on the selected segment. The car starts at segment ") + MapData.START_SEG + ".", DIM);
+        note(gr, bad == null ? rally3d.core.Lang.t("Map is ready to play.") : bad, bad == null ? GREEN : RED);
      } finally { rally3d.core.Trace.out(455, $t); } }
 
     private void panelWorld(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(456); try {
-        label(gr, "THEME");
-        pbtn2(gr, "DESERT", A_THEME, md.theme == 0, "WINTER", A_THEME + 1, md.theme == 1);
-        pbtn2(gr, "SUMMER", A_THEME + 2, md.theme == 2, "NIGHT", A_THEME + 3, md.theme == 3);
-        label(gr, "BACKGROUND");
-        pbtn2(gr, "DESERT", A_BG, md.bgPng == null && md.bgFrom == 0, "WINTER", A_BG + 1, md.bgPng == null && md.bgFrom == 1);
-        pbtn2(gr, "SUMMER", A_BG + 2, md.bgPng == null && md.bgFrom == 2, "NIGHT", A_BG + 3, md.bgPng == null && md.bgFrom == 3);
-        pbtn2(gr, "THEME'S", A_BG + 4, md.bgPng == null && md.bgFrom < 0, "PAINT...", A_BG + 5, md.bgPng != null);
-        label(gr, "ROAD SURFACE");
-        pbtn2(gr, "DESERT", A_ROAD, md.roadPng == null && md.roadFrom == 0, "WINTER", A_ROAD + 1, md.roadPng == null && md.roadFrom == 1);
-        pbtn2(gr, "SUMMER", A_ROAD + 2, md.roadPng == null && md.roadFrom == 2, "NIGHT", A_ROAD + 3, md.roadPng == null && md.roadFrom == 3);
-        pbtn2(gr, "THEME'S", A_ROAD + 4, md.roadPng == null && md.roadFrom < 0, "PAINT...", A_ROAD + 5, md.roadPng != null);
-        label(gr, "COLOURS");
-        String[] cn = {"SKY", "GROUND", "HUD"};
+        label(gr, rally3d.core.Lang.t("THEME"));
+        pbtn2(gr, rally3d.core.Lang.t("DESERT"), A_THEME, md.theme == 0, rally3d.core.Lang.t("WINTER"), A_THEME + 1, md.theme == 1);
+        pbtn2(gr, rally3d.core.Lang.t("SUMMER"), A_THEME + 2, md.theme == 2, rally3d.core.Lang.t("NIGHT"), A_THEME + 3, md.theme == 3);
+        label(gr, rally3d.core.Lang.t("BACKGROUND"));
+        pbtn2(gr, rally3d.core.Lang.t("DESERT"), A_BG, md.bgPng == null && md.bgFrom == 0, rally3d.core.Lang.t("WINTER"), A_BG + 1, md.bgPng == null && md.bgFrom == 1);
+        pbtn2(gr, rally3d.core.Lang.t("SUMMER"), A_BG + 2, md.bgPng == null && md.bgFrom == 2, rally3d.core.Lang.t("NIGHT"), A_BG + 3, md.bgPng == null && md.bgFrom == 3);
+        pbtn2(gr, rally3d.core.Lang.t("THEME'S"), A_BG + 4, md.bgPng == null && md.bgFrom < 0, rally3d.core.Lang.t("PAINT..."), A_BG + 5, md.bgPng != null);
+        label(gr, rally3d.core.Lang.t("ROAD SURFACE"));
+        pbtn2(gr, rally3d.core.Lang.t("DESERT"), A_ROAD, md.roadPng == null && md.roadFrom == 0, rally3d.core.Lang.t("WINTER"), A_ROAD + 1, md.roadPng == null && md.roadFrom == 1);
+        pbtn2(gr, rally3d.core.Lang.t("SUMMER"), A_ROAD + 2, md.roadPng == null && md.roadFrom == 2, rally3d.core.Lang.t("NIGHT"), A_ROAD + 3, md.roadPng == null && md.roadFrom == 3);
+        pbtn2(gr, rally3d.core.Lang.t("THEME'S"), A_ROAD + 4, md.roadPng == null && md.roadFrom < 0, rally3d.core.Lang.t("PAINT..."), A_ROAD + 5, md.roadPng != null);
+        label(gr, rally3d.core.Lang.t("COLOURS"));
+        String[] cn = {rally3d.core.Lang.t("SKY"), rally3d.core.Lang.t("GROUND"), rally3d.core.Lang.t("HUD")};
         int[] cv = {md.skyColor(), md.groundColor(), md.hudColor()};
         for (int k = 0; k < 3; k++) {
             if (pcy + bh() > ptop && pcy < pbottom) {
@@ -1659,11 +1659,11 @@ final class MapEditor {
             }
             pcy += bh() + 2;
         }
-        pbtn(gr, "THEME COLOURS", A_COLAUTO, 0, !md.customColors);
-        label(gr, "MAP INFO");
-        pbtn(gr, "NAME: " + md.name, A_INFO, 0, false);
-        pbtn(gr, "AUTHOR: " + (md.author.length() == 0 ? "-" : md.author), A_INFO + 1, 0, false);
-        pbtn(gr, "TEXT: " + (md.desc.length() == 0 ? "-" : md.desc), A_INFO + 2, 0, false);
+        pbtn(gr, rally3d.core.Lang.t("THEME COLOURS"), A_COLAUTO, 0, !md.customColors);
+        label(gr, rally3d.core.Lang.t("MAP INFO"));
+        pbtn(gr, rally3d.core.Lang.t("NAME: ") + md.name, A_INFO, 0, false);
+        pbtn(gr, rally3d.core.Lang.t("AUTHOR: ") + (md.author.length() == 0 ? "-" : md.author), A_INFO + 1, 0, false);
+        pbtn(gr, rally3d.core.Lang.t("TEXT: ") + (md.desc.length() == 0 ? "-" : md.desc), A_INFO + 2, 0, false);
      } finally { rally3d.core.Trace.out(456, $t); } }
 
     // ------------------------------------------------------------------ overlays
@@ -1731,7 +1731,7 @@ final class MapEditor {
             int x = (W - w) / 2, y = (H - h) / 2;
             fill(gr, 0, 0, W, H, 0xA0000000);
             box(gr, x, y, w, h);
-            textC(gr, palKind == 0 ? "SKY COLOUR" : palKind == 1 ? "GROUND COLOUR" : "HUD COLOUR", W / 2, y + 4, YEL, true);
+            textC(gr, palKind == 0 ? rally3d.core.Lang.t("SKY COLOUR") : palKind == 1 ? rally3d.core.Lang.t("GROUND COLOUR") : rally3d.core.Lang.t("HUD COLOUR"), W / 2, y + 4, YEL, true);
             for (int i = 0; i < palette.length; i++) {
                 int cx = x + 6 + (i % cols) * (cell + 2), cy = y + sh + 10 + (i / cols) * (cell + 2);
                 fill(gr, cx, cy, cell, cell, palette[i]);

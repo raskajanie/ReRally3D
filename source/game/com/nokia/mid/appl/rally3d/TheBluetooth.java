@@ -691,9 +691,9 @@ class TheBluetooth implements Runnable {
             port = Integer.parseInt(host.substring(colon + 1).trim());
             host = host.substring(0, colon).trim();
         }
-        if (host.length() == 0 || port < 1 || port > 65535) throw new IllegalArgumentException("bad address");
+        if (host.length() == 0 || port < 1 || port > 65535) throw new IllegalArgumentException(rally3d.core.Lang.t("bad address"));
         InetSocketAddress address = new InetSocketAddress(host, port);
-        if (address.isUnresolved()) throw new IllegalArgumentException("unknown host");
+        if (address.isUnresolved()) throw new IllegalArgumentException(rally3d.core.Lang.t("unknown host"));
         return address;
      } finally { rally3d.core.Trace.out(140, $t); } }
 
@@ -711,7 +711,7 @@ class TheBluetooth implements Runnable {
                 adapterAvailable = true;
             } catch (RuntimeException e) { rally3d.core.RLog.caught("TheBluetooth.clientSession", e);
                 warn("direct target '" + directTarget + "' is invalid: " + e, e);
-                connectError = "Invalid address: " + directTarget;
+                connectError = rally3d.core.Lang.t("Invalid address: ") + directTarget;
                 adapterAvailable = false;
             }
             inquiryDone = true;
@@ -743,7 +743,7 @@ class TheBluetooth implements Runnable {
                 byte[] name = playerName.getBytes(StandardCharsets.UTF_8);
                 byte[] password = joinPassword.getBytes(StandardCharsets.UTF_8);
                 byte[] ver = rally3d.core.Version.NAME.getBytes(StandardCharsets.UTF_8);
-                if (password.length > 96 || name.length + password.length + ver.length + 3 > 124) throw new IOException("Nickname or password is too long");
+                if (password.length > 96 || name.length + password.length + ver.length + 3 > 124) throw new IOException(rally3d.core.Lang.t("Nickname or password is too long"));
                 byte[] hello = new byte[5 + name.length + password.length + ver.length];
                 hello[0] = 17;                                   // 17 = hello with game version (16 = old clients, rejected by the host)
                 hello[1] = (byte)(name.length + password.length + ver.length + 3);
@@ -757,7 +757,7 @@ class TheBluetooth implements Runnable {
                 DataInputStream response = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
                 int responseType = response.readUnsignedByte();
                 int responseSize = response.readUnsignedByte();
-                if (responseType != 14 || responseSize < 2) throw new IOException("Invalid LAN join response");
+                if (responseType != 14 || responseSize < 2) throw new IOException(rally3d.core.Lang.t("Invalid LAN join response"));
                 int accepted = response.readUnsignedByte();
                 assignedPlayerId = response.readUnsignedByte();
                 if (accepted != 1 && assignedPlayerId == 4) {
@@ -848,7 +848,7 @@ class TheBluetooth implements Runnable {
             protectedServers[deviceCount] = password;
             incompatibleServers[deviceCount] = incompatible;
             hostVersions[deviceCount] = hostVer;
-            deviceNames[deviceCount] = name + "  [" + version + "]" + (legacy ? "  [OLD VERSION - INCOMPATIBLE]" : incompatible ? "  [v" + hostVer + " - INCOMPATIBLE]" : "  [v" + hostVer + "]") + (password ? "  [Password]" : "")
+            deviceNames[deviceCount] = name + "  [" + version + "]" + (legacy ? rally3d.core.Lang.t("  [OLD VERSION - INCOMPATIBLE]") : incompatible ? "  [v" + hostVer + rally3d.core.Lang.t(" - INCOMPATIBLE]") : "  [v" + hostVer + "]") + (password ? rally3d.core.Lang.t("  [Password]") : "")
                     + "  (" + packet.getAddress().getHostAddress() + ")";
             if (incompatible) warn("discovered host with a DIFFERENT game version: " + deviceNames[deviceCount] + " (we are " + rally3d.core.Version.NAME + ") - cannot play together", null);
             deviceCount++;

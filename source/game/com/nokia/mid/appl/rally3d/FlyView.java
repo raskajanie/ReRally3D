@@ -149,15 +149,15 @@ final class FlyView {
         showHelp = false;
         switch (code) {
             case 27: exit = true; break;
-            case 'R': gotoSegment(startSeg, true); say("Back to the start view"); break;
-            case 'F': boost = !boost; say(boost ? "Fast flight ON" : "Fast flight OFF"); break;
+            case 'R': gotoSegment(startSeg, true); say(rally3d.core.Lang.t("Back to the start view")); break;
+            case 'F': boost = !boost; say(boost ? rally3d.core.Lang.t("Fast flight ON") : rally3d.core.Lang.t("Fast flight OFF")); break;
             case 'H': showHelp = true; helpUntil = System.currentTimeMillis() + 12000L; break;
-            case 36: gotoSegment(MapData.START_SEG, true); say("Start line"); break;      // Home
-            case 35: gotoSegment(Math.max(0, g.checkpoints[3] - 2), true); say("Finish line"); break;   // End
+            case 36: gotoSegment(MapData.START_SEG, true); say(rally3d.core.Lang.t("Start line")); break;      // Home
+            case 35: gotoSegment(Math.max(0, g.checkpoints[3] - 2), true); say(rally3d.core.Lang.t("Finish line")); break;   // End
             case 33: gotoSegment(seg - 20, false); break;     // Page up / down: 20 segments along the road
             case 34: gotoSegment(seg + 20, false); break;
-            case 61: case 107: case 521: speed = clampSpeed(speed * 1.25f); say("Speed " + (int) speed); break;
-            case 45: case 109: speed = clampSpeed(speed / 1.25f); say("Speed " + (int) speed); break;
+            case 61: case 107: case 521: speed = clampSpeed(speed * 1.25f); say(rally3d.core.Lang.t("Speed ") + (int) speed); break;
+            case 45: case 109: speed = clampSpeed(speed / 1.25f); say(rally3d.core.Lang.t("Speed ") + (int) speed); break;
             default: break;
         }
      } finally { rally3d.core.Trace.out(510, $t); } }
@@ -225,8 +225,8 @@ final class FlyView {
     private void buttonAction(int b) { /*T*/ final long $t = rally3d.core.Trace.in(514); try {
         switch (b) {
             case B_EXIT: exit = true; break;
-            case B_SLOW: speed = clampSpeed(speed / 1.4f); say("Speed " + (int) speed); break;
-            case B_FASTER: speed = clampSpeed(speed * 1.4f); say("Speed " + (int) speed); break;
+            case B_SLOW: speed = clampSpeed(speed / 1.4f); say(rally3d.core.Lang.t("Speed ") + (int) speed); break;
+            case B_FASTER: speed = clampSpeed(speed * 1.4f); say(rally3d.core.Lang.t("Speed ") + (int) speed); break;
             case B_START: gotoSegment(MapData.START_SEG, true); break;
             case B_END: gotoSegment(Math.max(0, g.checkpoints[3] - 2), true); break;
             case B_HELP: showHelp = !showHelp; helpUntil = System.currentTimeMillis() + 15000L; break;
@@ -242,7 +242,7 @@ final class FlyView {
         W = g.width; H = g.height;
         sh = g.fontSmallHeight; bh = sh + 8;
         joyR = Math.max(24, Math.min(H * 22 / 100, 56));
-        int pad = 4, bw = Math.max(34, g.fontSmall.stringWidth("START") + 12);
+        int pad = 4, bw = Math.max(34, g.fontSmall.stringWidth(rally3d.core.Lang.t("START")) + 12);
         java.util.Arrays.fill(rects, null);
         rects[B_EXIT] = new int[]{pad, pad, bw, bh};
         rects[B_START] = new int[]{pad + bw + 3, pad, bw, bh};
@@ -285,19 +285,19 @@ final class FlyView {
     void drawHud(Graphics gr) { /*T*/ final long $t = rally3d.core.Trace.in(518); try {
         gr.setClip(0, 0, g.width, g.height);
         if (rects[B_EXIT] == null) layout();
-        button(gr, B_EXIT, "EXIT", false);
-        button(gr, B_START, "START", false);
-        button(gr, B_END, "FINISH", false);
+        button(gr, B_EXIT, rally3d.core.Lang.t("EXIT"), false);
+        button(gr, B_START, rally3d.core.Lang.t("START"), false);
+        button(gr, B_END, rally3d.core.Lang.t("FINISH"), false);
         button(gr, B_HELP, "?", showHelp);
-        button(gr, B_FASTER, "SPD +", false);
-        button(gr, B_SLOW, "SPD -", false);
-        button(gr, B_BOOST, "FAST", boost);
-        button(gr, B_UP, "UP", false);
-        button(gr, B_DOWN, "DOWN", false);
+        button(gr, B_FASTER, rally3d.core.Lang.t("SPD +"), false);
+        button(gr, B_SLOW, rally3d.core.Lang.t("SPD -"), false);
+        button(gr, B_BOOST, rally3d.core.Lang.t("FAST"), boost);
+        button(gr, B_UP, rally3d.core.Lang.t("UP"), false);
+        button(gr, B_DOWN, rally3d.core.Lang.t("DOWN"), false);
         // info line
         int n = g.segmentCount - 2;
         float alt = py - g.segments[Math.max(0, Math.min(n, seg))].startPos.v[1];
-        String info = "SEG " + seg + "/" + n + "   ALT " + Math.round(alt) + "   SPEED " + (int) speed + (held[16] || boost ? " x4" : "");
+        String info = rally3d.core.Lang.t("SEG ") + seg + "/" + n + rally3d.core.Lang.t("   ALT ") + Math.round(alt) + rally3d.core.Lang.t("   SPEED ") + (int) speed + (held[16] || boost ? " x4" : "");
         int iy = rects[B_EXIT][1] + bh + 4;
         gr.fillRectAlpha(4, iy - 1, tw(info) + 6, sh + 3, 0x90101820);
         txt(gr, info, 7, iy, 0xFFFFFF);
@@ -331,8 +331,8 @@ final class FlyView {
         }
         if (showHelp && (now < helpUntil || helpUntil == 0)) {
             String[] lines = rally3d.desktop.Platform.isTouchDevice()
-                ? new String[]{"FLY VIEW", "left side: joystick = move", "drag elsewhere = look around", "UP / DOWN = height, FAST = x4", "bottom bar = jump along the road", "EXIT or BACK = return to the editor"}
-                : new String[]{"FLY VIEW", "W A S D = move   Space / E = up   Q / C = down", "Shift = fast   Ctrl = slow   wheel or + / - = speed", "drag the mouse or use arrows = look", "Home / End = start / finish   PgUp / PgDn = 20 segments", "R = back to the first view   F = fast toggle   Esc = leave"};
+                ? new String[]{rally3d.core.Lang.t("FLY VIEW"), rally3d.core.Lang.t("left side: joystick = move"), rally3d.core.Lang.t("drag elsewhere = look around"), rally3d.core.Lang.t("UP / DOWN = height, FAST = x4"), rally3d.core.Lang.t("bottom bar = jump along the road"), rally3d.core.Lang.t("EXIT or BACK = return to the editor")}
+                : new String[]{rally3d.core.Lang.t("FLY VIEW"), rally3d.core.Lang.t("W A S D = move   Space / E = up   Q / C = down"), rally3d.core.Lang.t("Shift = fast   Ctrl = slow   wheel or + / - = speed"), rally3d.core.Lang.t("drag the mouse or use arrows = look"), rally3d.core.Lang.t("Home / End = start / finish   PgUp / PgDn = 20 segments"), rally3d.core.Lang.t("R = back to the first view   F = fast toggle   Esc = leave")};
             int w = 0;
             for (String l : lines) w = Math.max(w, tw(l));
             w += 14;

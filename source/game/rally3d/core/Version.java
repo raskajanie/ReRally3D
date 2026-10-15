@@ -8,6 +8,6 @@ package rally3d.core;
  */
 public final class Version {
     private Version() {}
-    public static final String NAME = "2.0-alpha57";
-    public static final int CODE = 52;
+    public static final String NAME = "2.0-alpha65";
+    public static final int CODE = 60;
 }

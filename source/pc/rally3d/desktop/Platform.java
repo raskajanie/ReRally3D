@@ -106,9 +106,11 @@ public final class Platform {
         customFpsLimit = parse(p.getProperty("fpsLimit"), -1);
         if (customFpsLimit > 1000) customFpsLimit = 1000;
         if (customFpsLimit < -1) customFpsLimit = -1;
+        if (customFpsLimit > 0 && customFpsLimit < 30) customFpsLimit = 30;   // the menu offers 30..1000 (0 = unlimited); a hand-edited 5 would make the game crawl
         fullscreen = Boolean.parseBoolean(p.getProperty("fullscreen", "false"));
         showFps = Boolean.parseBoolean(p.getProperty("showFps", "false"));
         telemetryEnabled = Boolean.parseBoolean(p.getProperty("telemetry", "true"));
+        language = p.getProperty("language");
         vanillaMode = Boolean.parseBoolean(p.getProperty("vanillaMode", "false"));
         uiAnimationsEnabled = Boolean.parseBoolean(p.getProperty("uiAnimations", "true"));
         mouseLookEnabled = Boolean.parseBoolean(p.getProperty("mouseLook", "true"));
@@ -192,6 +194,7 @@ public final class Platform {
         p.setProperty("fullscreen", String.valueOf(fullscreen));
         p.setProperty("showFps", String.valueOf(showFps));
         p.setProperty("telemetry", String.valueOf(telemetryEnabled));
+        if (language != null) p.setProperty("language", language);
         p.setProperty("vanillaMode", String.valueOf(vanillaMode));
         p.setProperty("calibrated", String.valueOf(calibrated));
         p.setProperty("uiAnimations", String.valueOf(uiAnimationsEnabled));
@@ -267,6 +270,10 @@ public final class Platform {
     /** Watching others: orbit camera works even if "Mouse camera" is off (not in Vanilla mode). */
     public static boolean isSpectateLookEnabled() { return spectating && !vanillaMode; }
     public static boolean isShowFps() { return showFps; }
+    /** UI language chosen by the player (settings.properties "language"), null until the first-run choice was made. */
+    private static volatile String language;
+    public static String getLanguage() { return language; }
+    public static void setLanguage(String code) { language = code; save(); }
     public static boolean isTelemetryEnabled() { return telemetryEnabled && !vanillaMode; }
     public static void setTelemetryEnabled(boolean enabled) { telemetryEnabled = enabled; save(); }
     public static boolean isVanillaMode() { return vanillaMode; }
@@ -300,16 +307,16 @@ public final class Platform {
 
     /** Ghost of the best run for this exact track+car. Falls back to the old one-per-track file (caller checks its carIndex). */
     public static byte[] loadGhost(int trackIndex, int carIndex) {
-        if (trackIndex < 0 || trackIndex >= 12 || carIndex < 0 || carIndex > 3) return null;
+        if (trackIndex < 0 || carIndex < 0) return null;   // any stock track or custom map id, any car key (stock 0..3 or add-on >= 1000)
         File file = new File(CONFIG.getParentFile(), "ghosts/track-" + trackIndex + "-car-" + carIndex + ".rpl");
-        if (!file.isFile()) return loadGhost(trackIndex);
+        if (!file.isFile()) return trackIndex < 12 && carIndex < 4 ? loadGhost(trackIndex) : null;   // old one-per-track file only exists for stock tracks
         try { return Files.readAllBytes(file.toPath()); }
         catch (java.io.FileNotFoundException e) { return null; }
         catch (Exception e) { LogConsole.warning("ghost", "Could not load ghost for track " + trackIndex + " car " + carIndex, e); return null; }
     }
 
     public static boolean saveGhost(int trackIndex, int carIndex, byte[] data) {
-        if (trackIndex < 0 || trackIndex >= 12 || carIndex < 0 || carIndex > 3 || data == null || data.length == 0) return false;
+        if (trackIndex < 0 || carIndex < 0 || data == null || data.length == 0) return false;
         File directory = new File(CONFIG.getParentFile(), "ghosts");
         File target = new File(directory, "track-" + trackIndex + "-car-" + carIndex + ".rpl");
         File temporary = new File(directory, "track-" + trackIndex + "-car-" + carIndex + ".rpl.tmp");
@@ -324,12 +331,29 @@ public final class Platform {
             return false;
         }
     }
+    /** Car keys that have a saved ghost file for this track (stock track or custom map id). */
+    public static int[] ghostKeys(int trackIndex) {
+        if (trackIndex < 0) return new int[0];
+        File[] files = new File(CONFIG.getParentFile(), "ghosts").listFiles();
+        if (files == null) return new int[0];
+        String prefix = "track-" + trackIndex + "-car-";
+        int[] out = new int[files.length];
+        int n = 0;
+        for (File f : files) {
+            String name = f.getName();
+            if (!name.startsWith(prefix) || !name.endsWith(".rpl")) continue;
+            try { out[n] = Integer.parseInt(name.substring(prefix.length(), name.length() - 4)); n++; }
+            catch (NumberFormatException e) { LogConsole.warning("ghost", "Ignoring ghost file " + name, e); }
+        }
+        return java.util.Arrays.copyOf(out, n);
+    }
+
     /**
      * Folder with the add-ons (sub-folders maps / cars / wheels are created by AddonManager.ensureDirs on every start).
      * Windows: %APPDATA%\\Rally3D\\addons (Roaming), so no zips pile up next to the game. Other systems: ~/.rally3d/addons.
      */
     public static File addonsDir() {
-        String os = System.getProperty("os.name", "").toLowerCase();
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
         if (os.contains("win")) {
             String appData = System.getenv("APPDATA");
             File base = appData != null && appData.trim().length() > 0 ? new File(appData) : new File(System.getProperty("user.home"), "AppData\\Roaming");
@@ -348,7 +372,7 @@ public final class Platform {
         try {
             java.awt.EventQueue.invokeAndWait(new Runnable() { public void run() {
                 File[] chosen;
-                if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+                if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
                     // Windows: the native Explorer open dialog (AWT FileDialog), not the Swing one
                     java.awt.FileDialog fd = new java.awt.FileDialog((java.awt.Frame)null, "Rally3D - choose add-on zip file(s)", java.awt.FileDialog.LOAD);
                     fd.setMultipleMode(true);
@@ -373,7 +397,7 @@ public final class Platform {
                 for (File f : chosen) {
                     try {
                         String name = f.getName().replaceAll("[^\\p{L}\\p{N}._ -]", "_");
-                        if (!name.toLowerCase().endsWith(".zip")) name += ".zip";
+                        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) name += ".zip";
                         File target = new File(dir, name);
                         for (int i = 2; target.exists(); i++) target = new File(dir, name.replaceAll("(?i)\\.zip$", "") + "-" + i + ".zip");
                         Files.copy(f.toPath(), target.toPath());
@@ -390,7 +414,7 @@ public final class Platform {
         String n = name == null ? "" : name.replaceAll("[^\\p{L}\\p{N}._ -]", "_").trim();
         if (n.length() == 0) n = "map";
         if (n.length() > 60) n = n.substring(0, 60);
-        if (!n.toLowerCase().endsWith(ext)) n += ext;
+        if (!n.toLowerCase(java.util.Locale.ROOT).endsWith(ext)) n += ext;
         return n;
     }
 
@@ -400,7 +424,12 @@ public final class Platform {
      * Without a display (headless) the file goes to the add-ons "export" folder.
      */
     public static String exportFile(final String suggestedName, final byte[] data) {
-        final String fname = safeFileName(suggestedName, ".zip");
+        return exportFile(suggestedName, data, ".zip", "Rally3D - export map zip");
+    }
+
+    /** Save dialog for any file type: ext includes the dot (".txt"), title is the dialog title. Returns the saved file name or null. */
+    public static String exportFile(final String suggestedName, final byte[] data, final String ext, final String title) {
+        final String fname = safeFileName(suggestedName, ext);
         final String[] result = {null};
         if (data == null) return null;
         if (GraphicsEnvironment.isHeadless()) {
@@ -415,8 +444,8 @@ public final class Platform {
         try {
             java.awt.EventQueue.invokeAndWait(new Runnable() { public void run() {
                 File target = null;
-                if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
-                    java.awt.FileDialog fd = new java.awt.FileDialog((java.awt.Frame) null, "Rally3D - export map zip", java.awt.FileDialog.SAVE);
+                if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+                    java.awt.FileDialog fd = new java.awt.FileDialog((java.awt.Frame) null, title, java.awt.FileDialog.SAVE);
                     fd.setFile(fname);
                     File dl = new File(System.getProperty("user.home"), "Downloads");
                     if (dl.isDirectory()) fd.setDirectory(dl.getAbsolutePath());
@@ -426,16 +455,60 @@ public final class Platform {
                     fd.dispose();
                 } else {
                     javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
-                    fc.setDialogTitle("Rally3D - export map zip");
+                    fc.setDialogTitle(title);
                     fc.setSelectedFile(new File(fname));
                     if (fc.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) target = fc.getSelectedFile();
                 }
                 if (target == null) return;
-                if (!target.getName().toLowerCase().endsWith(".zip")) target = new File(target.getParentFile(), target.getName() + ".zip");
+                if (!target.getName().toLowerCase(java.util.Locale.ROOT).endsWith(ext)) target = new File(target.getParentFile(), target.getName() + ext);
                 try { Files.write(target.toPath(), data); result[0] = target.getName(); }
                 catch (Exception e) { LogConsole.warning("addon", "Could not write " + target, e); }
             } });
         } catch (Exception e) { LogConsole.warning("addon", "Export dialog failed", e); }
+        return result[0];
+    }
+
+    private static volatile boolean logExportBusy;
+
+    /** Log overlay -> EXPORT: save dialog, then the whole log (rally3d-2.log + -1 + -0, oldest first) is written there. Does not block the game thread. */
+    public static void exportLog() {
+        if (logExportBusy) return;
+        logExportBusy = true;
+        new Thread(new Runnable() { public void run() {
+            try {
+                byte[] data = LogConsole.collectLog();
+                if (data == null || data.length == 0) { LogConsole.info("log", "Log is empty, nothing to export"); return; }
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
+                String saved = exportFile("rally3d-log-" + stamp, data, ".txt", "Rally3D - save log");
+                if (saved != null) LogConsole.info("log", "log exported: " + saved + " (" + (data.length / 1024 + 1) + " KB)");
+            } catch (Throwable t) {
+                LogConsole.warning("log", "Log export failed", t);
+            } finally { logExportBusy = false; }
+        } }, "log-export").start();
+    }
+
+    /** Folder with the progress (rms/, ghosts/, settings.properties); the base of the progress backup. */
+    public static File progressDir() { return CONFIG.getParentFile(); }
+
+    /** Open dialog (blocks the game thread): returns the bytes of the chosen file (max 256 MB) or null when cancelled / failed / headless. */
+    public static byte[] pickFile(final String title) {
+        if (GraphicsEnvironment.isHeadless()) return null;
+        final byte[][] result = {null};
+        try {
+            java.awt.EventQueue.invokeAndWait(new Runnable() { public void run() {
+                File source = null;
+                java.awt.FileDialog fd = new java.awt.FileDialog((java.awt.Frame) null, title, java.awt.FileDialog.LOAD);
+                fd.setAlwaysOnTop(true);
+                fd.setVisible(true);
+                if (fd.getFile() != null) source = new File(fd.getDirectory(), fd.getFile());
+                fd.dispose();
+                if (source == null) return;
+                try {
+                    if (source.length() > rally3d.core.ProgressBackup.MAX_TOTAL) { LogConsole.warning("backup", "File too big: " + source, null); return; }
+                    result[0] = Files.readAllBytes(source.toPath());
+                } catch (Exception e) { LogConsole.warning("backup", "Could not read " + source, e); }
+            } });
+        } catch (Exception e) { LogConsole.warning("backup", "Open dialog failed", e); }
         return result[0];
     }
 
@@ -560,6 +633,7 @@ public final class Platform {
 
     /** Low-overhead rolling timings, reported to the F1 log once per 10 seconds. */
     public static boolean supportsVibration() { return true; }
+    public static void vibrate(int ms, int amplitude) { }
     public static boolean isBackground() { return false; }
     public static synchronized void recordPerformance(int stage, long elapsedNanos) {
         if (stage < 0 || stage >= PERF_STAGES.length) return;

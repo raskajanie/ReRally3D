@@ -230,8 +230,8 @@ final class Painter {
             case P_DONE: ed.painterDone(this); break;
             case P_MIRROR: mirror = !mirror; break;
             case P_CLEAR: snapshot(); java.util.Arrays.fill(px, alpha ? 0 : 0xFF000000 | ed.md.skyColor()); dirtyView = true; break;
-            case P_TEMPL: ed.showList("TEMPLATE", TEMPLATES, MapEditor.LK_TEMPLATE); break;
-            case P_STOCK: ed.showList("COPY A STOCK SPRITE", STOCK, MapEditor.LK_STOCKSPR); break;
+            case P_TEMPL: ed.showList(rally3d.core.Lang.t("TEMPLATE"), rally3d.core.Lang.tl(TEMPLATES), MapEditor.LK_TEMPLATE); break;
+            case P_STOCK: ed.showList(rally3d.core.Lang.t("COPY A STOCK SPRITE"), rally3d.core.Lang.tl(STOCK), MapEditor.LK_STOCKSPR); break;
             case P_ZIN: setZoom(zoom + 1); break;
             case P_ZOUT: setZoom(zoom - 1); break;
             case P_FLIPH: flip(true); break;
@@ -240,8 +240,8 @@ final class Painter {
             case P_SHAPEFILL: shapeFill = !shapeFill; break;
             case P_HEX: hexColor(); break;
             case P_IMPORT: openImport(); break;
-            case P_BGTPL: ed.showList("BACKGROUND TEMPLATE", MapTemplates.BG_NAMES, MapEditor.LK_BGTPL); break;
-            case P_ROADTPL: ed.showList("ROAD SURFACE (TILES 0 + 5)", MapTemplates.ROAD_NAMES, MapEditor.LK_ROADTPL); break;
+            case P_BGTPL: ed.showList(rally3d.core.Lang.t("BACKGROUND TEMPLATE"), rally3d.core.Lang.tl(MapTemplates.BG_NAMES), MapEditor.LK_BGTPL); break;
+            case P_ROADTPL: ed.showList(rally3d.core.Lang.t("ROAD SURFACE (TILES 0 + 5)"), rally3d.core.Lang.tl(MapTemplates.ROAD_NAMES), MapEditor.LK_ROADTPL); break;
             case P_SEAM: seamless(); break;
             default: break;
         }
@@ -389,7 +389,7 @@ final class Painter {
             px[y * w + w - 1 - i] = mixc(o[y * w + w - 1 - i], o[y * w + i], a);
         }
         dirtyView = true;
-        ed.say("Edges blended - the picture repeats smoothly");
+        ed.say(rally3d.core.Lang.t("Edges blended - the picture repeats smoothly"));
      } finally { rally3d.core.Trace.out(543, $t); } }
 
     private static int mixc(int c0, int c1, double t) { /*T*/ final long $t = rally3d.core.Trace.in(544); try {
@@ -408,16 +408,16 @@ final class Painter {
      } finally { rally3d.core.Trace.out(545, $t); } }
 
     private void hexColor() { /*T*/ final long $t = rally3d.core.Trace.in(546); try {
-        String cur = Integer.toHexString(color & 0xFFFFFF).toUpperCase();
+        String cur = Integer.toHexString(color & 0xFFFFFF).toUpperCase(java.util.Locale.ROOT);
         while (cur.length() < 6) cur = "0" + cur;
-        String v = ed.askText("Colour (hex RRGGBB)", "#", cur, 7);
+        String v = ed.askText(rally3d.core.Lang.t("Colour (hex RRGGBB)"), "#", cur, 7);
         if (v == null) return;
         v = v.trim();
         if (v.startsWith("#")) v = v.substring(1);
         if (v.length() == 3) v = "" + v.charAt(0) + v.charAt(0) + v.charAt(1) + v.charAt(1) + v.charAt(2) + v.charAt(2);
         try {
             color = 0xFF000000 | Integer.parseInt(v, 16);
-            if (v.length() != 6) { ed.say("Use 6 hex digits, e.g. 3A7BD5"); return; }
+            if (v.length() != 6) { ed.say(rally3d.core.Lang.t("Use 6 hex digits, e.g. 3A7BD5")); return; }
             if (tool == 1 || tool == 3) tool = 0;
         } catch (NumberFormatException e) { rally3d.core.RLog.caught("Painter.hexColor", e); ed.say("Not a hex colour: " + v); }
      } finally { rally3d.core.Trace.out(546, $t); } }
@@ -436,21 +436,21 @@ final class Painter {
         File dir = importDir();
         File[] all = dir.listFiles();
         ArrayList<File> pngs = new ArrayList<File>();
-        if (all != null) for (File fl : all) if (fl.isFile() && fl.getName().toLowerCase().endsWith(".png")) pngs.add(fl);
+        if (all != null) for (File fl : all) if (fl.isFile() && fl.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".png")) pngs.add(fl);
         java.util.Collections.sort(pngs);
-        if (pngs.isEmpty()) { ed.say("No PNG files. Put them into " + shown(dir)); return; }
+        if (pngs.isEmpty()) { ed.say(rally3d.core.Lang.t("No PNG files. Put them into ") + shown(dir)); return; }
         while (pngs.size() > 60) pngs.remove(pngs.size() - 1);
         importFiles = pngs.toArray(new File[0]);
         String[] names = new String[importFiles.length];
         for (int i = 0; i < names.length; i++) names[i] = importFiles[i].getName();
-        ed.showList("IMPORT PNG (" + shown(dir) + ")", names, MapEditor.LK_IMPORT);
+        ed.showList(rally3d.core.Lang.t("IMPORT PNG (") + shown(dir) + ")", names, MapEditor.LK_IMPORT);
      } finally { rally3d.core.Trace.out(548, $t); } }
 
     /** Loads import file i into the picture: sprites keep their proportions (small ones are enlarged in whole steps), backgrounds are stretched, the road accepts a whole 256x32 atlas or one square tile for tiles 0 and 5. */
     void importPng(int i) { /*T*/ final long $t = rally3d.core.Trace.in(549); try {
         if (importFiles == null || i < 0 || i >= importFiles.length) return;
         File fl = importFiles[i];
-        if (fl.length() > 1500 * 1024L) { ed.say("PNG too big (max 1.5 MB): " + fl.getName()); return; }
+        if (fl.length() > 1500 * 1024L) { ed.say(rally3d.core.Lang.t("PNG too big (max 1.5 MB): ") + fl.getName()); return; }
         byte[] data;
         try {
             java.io.FileInputStream in = new java.io.FileInputStream(fl);
@@ -459,7 +459,7 @@ final class Painter {
         } catch (java.io.IOException e) { rally3d.core.RLog.caught("Painter.importPng", e); ed.say("Cannot read " + fl.getName()); return; }
         int[] wh = new int[2];
         int[] src = PngCodec.decode(data, wh);
-        if (src == null) { ed.say("Not a usable PNG (max 1024x1024): " + fl.getName()); return; }
+        if (src == null) { ed.say(rally3d.core.Lang.t("Not a usable PNG (max 1024x1024): ") + fl.getName()); return; }
         int sw = wh[0], sh2 = wh[1];
         snapshot();
         if (kind == K_SPRITE) {
@@ -486,7 +486,7 @@ final class Painter {
             }
         }
         dirtyView = true;
-        ed.say("Imported " + fl.getName());
+        ed.say(rally3d.core.Lang.t("Imported ") + fl.getName());
      } finally { rally3d.core.Trace.out(549, $t); } }
 
     void bgTemplate(int i) { /*T*/ final long $t = rally3d.core.Trace.in(550); try {
@@ -496,7 +496,7 @@ final class Painter {
         if (w == 128 && h == 128) System.arraycopy(t, 0, px, 0, px.length);
         else { int[] sm = PngCodec.scale(t, 128, 128, w, h); System.arraycopy(sm, 0, px, 0, px.length); }
         dirtyView = true;
-        ed.say(MapTemplates.BG_NAMES[i] + " background (repeats left-right)");
+        ed.say(rally3d.core.Lang.t(MapTemplates.BG_NAMES[i]) + rally3d.core.Lang.t(" background (repeats left-right)"));
      } finally { rally3d.core.Trace.out(550, $t); } }
 
     void roadTemplate(int i) { /*T*/ final long $t = rally3d.core.Trace.in(551); try {
@@ -504,7 +504,7 @@ final class Painter {
         snapshot();
         MapTemplates.road(i, px, w);
         dirtyView = true;
-        ed.say(MapTemplates.ROAD_NAMES[i] + " in tiles 0 + 5 (roadside tiles untouched)");
+        ed.say(rally3d.core.Lang.t(MapTemplates.ROAD_NAMES[i]) + rally3d.core.Lang.t(" in tiles 0 + 5 (roadside tiles untouched)"));
      } finally { rally3d.core.Trace.out(551, $t); } }
 
     // ------------------------------------------------------------------ drawing
@@ -546,11 +546,11 @@ final class Painter {
         // top bar
         ed.fill(gr, 0, 0, W, TB, MapEditor.PANEL);
         gr.setColor(0x5A7088); gr.drawLine(0, TB - 1, W, TB - 1);
-        int bw = Math.max(34, ed.textW("CANCEL", true) + 10), bh = TB - 3;
-        ed.button(gr, W - 2 - bw, 1, bw, bh, "DONE", A_(P_DONE), 0, true);
-        ed.button(gr, W - 4 - bw * 2, 1, bw, bh, "CANCEL", A_(P_CANCEL), 0, false);
-        ed.button(gr, 2, 1, bw, bh, "UNDO", A_(P_UNDO), 0, false);
-        ed.button(gr, 4 + bw, 1, bw, bh, "REDO", A_(P_REDO), 0, false);
+        int bw = Math.max(34, ed.textW(rally3d.core.Lang.t("CANCEL"), true) + 10), bh = TB - 3;
+        ed.button(gr, W - 2 - bw, 1, bw, bh, rally3d.core.Lang.t("DONE"), A_(P_DONE), 0, true);
+        ed.button(gr, W - 4 - bw * 2, 1, bw, bh, rally3d.core.Lang.t("CANCEL"), A_(P_CANCEL), 0, false);
+        ed.button(gr, 2, 1, bw, bh, rally3d.core.Lang.t("UNDO"), A_(P_UNDO), 0, false);
+        ed.button(gr, 4 + bw, 1, bw, bh, rally3d.core.Lang.t("REDO"), A_(P_REDO), 0, false);
         ed.text(gr, title + " " + w + "x" + h + "  x" + zoom, 8 + bw * 2, (TB - sh) / 2, MapEditor.YEL, true);
         // right panel: scrolls (palette, RGB sliders, tools, brush, effects, templates)
         int px0 = W - PW;
@@ -570,7 +570,7 @@ final class Painter {
         y += ((pal.length + 5) / 6) * cell + 3;
         ed.fill(gr, px0 + 3, y, 14, 10, 0xFF000000 | color);
         ed.frame(gr, px0 + 3, y, 14, 10, MapEditor.WHITE);
-        ed.text(gr, TOOL_NAMES[tool] + (tool >= T_RECT ? (shapeFill ? " SOLID" : " LINE") : ""), px0 + 21, y - 1, MapEditor.YEL, true);
+        ed.text(gr, rally3d.core.Lang.t(TOOL_NAMES[tool]) + (tool >= T_RECT ? (shapeFill ? rally3d.core.Lang.t(" SOLID") : rally3d.core.Lang.t(" LINE")) : ""), px0 + 21, y - 1, MapEditor.YEL, true);
         y += Math.max(12, sh + 2);
         // RGB sliders (tap or drag) + hex entry
         String[] cn = {"R", "G", "B"};
@@ -586,43 +586,43 @@ final class Painter {
             y += sh + 4;
         }
         int bw2 = (PW - 8) / 2;
-        y = pb(gr, px0 + 3, y, pw, bhh, "HEX COLOUR...", A_(P_HEX), false);
+        y = pb(gr, px0 + 3, y, pw, bhh, rally3d.core.Lang.t("HEX COLOUR..."), A_(P_HEX), false);
         y += 2;
         int[] shown = alpha ? new int[]{0, 1, 2, 3, 4, 5, 6} : new int[]{0, 2, 3, 4, 5, 6};
         for (int t = 0; t < shown.length; t += 2) {
-            pb(gr, px0 + 3, y, bw2, bhh, TOOL_NAMES[shown[t]], A_(P_TOOL + shown[t]), tool == shown[t]);
-            if (t + 1 < shown.length) pb(gr, px0 + 5 + bw2, y, bw2, bhh, TOOL_NAMES[shown[t + 1]], A_(P_TOOL + shown[t + 1]), tool == shown[t + 1]);
+            pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t(TOOL_NAMES[shown[t]]), A_(P_TOOL + shown[t]), tool == shown[t]);
+            if (t + 1 < shown.length) pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t(TOOL_NAMES[shown[t + 1]]), A_(P_TOOL + shown[t + 1]), tool == shown[t + 1]);
             y += bhh + 2;
         }
-        y = pb(gr, px0 + 3, y, pw, bhh, shapeFill ? "RECT / OVAL: SOLID" : "RECT / OVAL: LINE", A_(P_SHAPEFILL), shapeFill);
+        y = pb(gr, px0 + 3, y, pw, bhh, shapeFill ? rally3d.core.Lang.t("RECT / OVAL: SOLID") : rally3d.core.Lang.t("RECT / OVAL: LINE"), A_(P_SHAPEFILL), shapeFill);
         y += 2;
         int b3 = (PW - 10) / 3;
         for (int b = 0; b < 3; b++) pb(gr, px0 + 3 + b * (b3 + 2), y, b3, bhh, String.valueOf(b + 1), A_(P_BRUSH + b), brush == b + 1);
         y += bhh + 2;
-        pb(gr, px0 + 3, y, bw2, bhh, "MIRROR", A_(P_MIRROR), mirror);
-        pb(gr, px0 + 5 + bw2, y, bw2, bhh, "CLEAR", A_(P_CLEAR), false);
+        pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t("MIRROR"), A_(P_MIRROR), mirror);
+        pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t("CLEAR"), A_(P_CLEAR), false);
         y += bhh + 2;
-        pb(gr, px0 + 3, y, bw2, bhh, "FLIP H", A_(P_FLIPH), false);
-        pb(gr, px0 + 5 + bw2, y, bw2, bhh, "FLIP V", A_(P_FLIPV), false);
+        pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t("FLIP H"), A_(P_FLIPH), false);
+        pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t("FLIP V"), A_(P_FLIPV), false);
         y += bhh + 2;
         if (kind == K_SPRITE) {
-            pb(gr, px0 + 3, y, bw2, bhh, "TEMPLATE", A_(P_TEMPL), false);
-            pb(gr, px0 + 5 + bw2, y, bw2, bhh, "STOCK", A_(P_STOCK), false);
+            pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t("TEMPLATE"), A_(P_TEMPL), false);
+            pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t("STOCK"), A_(P_STOCK), false);
             y += bhh + 2;
         } else if (kind == K_BG) {
-            pb(gr, px0 + 3, y, bw2, bhh, "TEMPLATE", A_(P_BGTPL), false);
-            pb(gr, px0 + 5 + bw2, y, bw2, bhh, "ROLL", A_(P_ROLL), false);
+            pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t("TEMPLATE"), A_(P_BGTPL), false);
+            pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t("ROLL"), A_(P_ROLL), false);
             y += bhh + 2;
-            y = pb(gr, px0 + 3, y, pw, bhh, "MAKE SEAMLESS", A_(P_SEAM), false);
+            y = pb(gr, px0 + 3, y, pw, bhh, rally3d.core.Lang.t("MAKE SEAMLESS"), A_(P_SEAM), false);
             y += 2;
         } else {
-            pb(gr, px0 + 3, y, bw2, bhh, "ROAD SET", A_(P_ROADTPL), false);
-            pb(gr, px0 + 5 + bw2, y, bw2, bhh, "ROLL", A_(P_ROLL), false);
+            pb(gr, px0 + 3, y, bw2, bhh, rally3d.core.Lang.t("ROAD SET"), A_(P_ROADTPL), false);
+            pb(gr, px0 + 5 + bw2, y, bw2, bhh, rally3d.core.Lang.t("ROLL"), A_(P_ROLL), false);
             y += bhh + 2;
         }
-        y = pb(gr, px0 + 3, y, pw, bhh, "IMPORT PNG...", A_(P_IMPORT), false);
+        y = pb(gr, px0 + 3, y, pw, bhh, rally3d.core.Lang.t("IMPORT PNG..."), A_(P_IMPORT), false);
         y += 4;
-        if (kind == K_ROAD) { ed.text(gr, "tile 0 = road, 5 = centre line", px0 + 3, y, MapEditor.DIM, true); y += sh + 2; }
+        if (kind == K_ROAD) { ed.text(gr, rally3d.core.Lang.t("tile 0 = road, 5 = centre line"), px0 + 3, y, MapEditor.DIM, true); y += sh + 2; }
         panelContent = y + panelScroll - TB + 2;
         gr.setClip(0, 0, W, H);
         if (panelContent > H - TB) {

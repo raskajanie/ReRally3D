@@ -5,15 +5,18 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 
-/** Compact recording of the best run for one (track, car) pair; timeline is real milliseconds since the start. */
+/** Compact recording of the best run for one (track, car) pair (track = stock 0..11 or custom map id, car = stable car key, see RallyGame.ghostKeyOf); timeline is real milliseconds since the start. */
 final class GhostReplay {
-    private static final int VERSION = 2;          // v1 stored 0.1 s ticks (one pose per tick); still readable
+    private static final int VERSION = 3;          // v1 stored 0.1 s ticks (one pose per tick), v2 had no car name; both still readable
     private static final int MAX_FRAMES = 30050;
     private static final int MIN_STEP_MS = 16;     // <= ~62 poses/s whatever the render fps -> 300 s race stays under MAX_FRAMES
     private static final int MAX_TIME_MS = 600000;   // > MAX_FRAMES * MIN_STEP_MS (~481 s): every recorded run must decode again
     int finishTime;                                // 0.1 s units, same as RaceState.raceTime (HUD / split comparison)
     int finishMs;                                  // exact finish time, used to decide whether a run beats the record
-    int carIndex;
+    /** Stable car key: 0..3 = stock car, >= 1000 = add-on car (AddonPack.carKey). Never an index into the current car list. */
+    int carKey;
+    /** Display name of the car that drove this run (shown even if the add-on is no longer installed). */
+    String carName = "";
     private int[] times = new int[256];
     private float[] poses = new float[256 * 6];
     private int count;
@@ -31,7 +34,11 @@ final class GhostReplay {
             return;
         }
         if (!force && count > 0 && elapsedTime - times[count - 1] < MIN_STEP_MS) return;
-        if (count >= MAX_FRAMES) return;
+        if (count >= MAX_FRAMES) {
+            // buffer full (a race of ~8 minutes): the exact finish pose still replaces the last frame, so the ghost ends on the finish line
+            if (force) { times[count - 1] = elapsedTime; writePose((count - 1) * 6, car); }
+            return;
+        }
         if (count == times.length) {
             int size = Math.min(MAX_FRAMES, times.length * 2);
             times = java.util.Arrays.copyOf(times, size);
@@ -92,7 +99,8 @@ final class GhostReplay {
             out.writeInt(VERSION);
             out.writeInt(finishTime);
             out.writeInt(finishMs);
-            out.writeInt(carIndex);
+            out.writeInt(carKey);
+            out.writeUTF(carName == null ? "" : carName);
             out.writeInt(count);
             for (int i = 0; i < count; i++) {
                 out.writeInt(times[i]);
@@ -104,17 +112,18 @@ final class GhostReplay {
      } finally { rally3d.core.Trace.out(23, $t); } }
 
     static GhostReplay decode(byte[] data) { /*T*/ final long $t = rally3d.core.Trace.in(24); try {
-        if (data == null || data.length < 16 || data.length > 1024 * 1024) return null;
+        if (data == null || data.length < 16 || data.length > 2 * 1024 * 1024) return null;
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
             int version = in.readInt();
-            if (version != 1 && version != VERSION) return null;
+            if (version < 1 || version > VERSION) return null;
             GhostReplay replay = new GhostReplay();
             replay.finishTime = in.readInt();
             replay.finishMs = version == 1 ? replay.finishTime * 100 : in.readInt();
-            replay.carIndex = in.readInt();
+            replay.carKey = in.readInt();
+            if (version >= 3) { String nm = in.readUTF(); replay.carName = nm.length() > 64 ? nm.substring(0, 64) : nm; }
             int count = in.readInt();
-            if (replay.finishTime < 0 || replay.finishMs < 0 || replay.carIndex < 0 || replay.carIndex > 3 || count < 1 || count > MAX_FRAMES) return null;
+            if (replay.finishTime < 0 || replay.finishMs < 0 || replay.carKey < 0 || count < 1 || count > MAX_FRAMES) return null;
             replay.times = new int[Math.max(256, count)];
             replay.poses = new float[Math.max(256, count) * 6];
             int previousTime = -1;

@@ -58,6 +58,20 @@ public final class LogConsole {
         info("log", activeLogFile == null ? "File logging unavailable" : "Log file: " + activeLogFile.getAbsolutePath());
     }
 
+    /** All rotated log files joined, oldest first (rally3d-2.log, -1, -0); null if file logging is unavailable. */
+    static byte[] collectLog() throws java.io.IOException {
+        File cur = activeLogFile;
+        if (cur == null) return null;
+        for (java.util.logging.Handler h : FILE.getHandlers()) h.flush();
+        File dir = cur.getParentFile();
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        for (int i = 2; i >= 0; i--) {
+            File f = new File(dir, "rally3d-" + i + ".log");
+            if (f.isFile() && bo.size() < 16 * 1024 * 1024) bo.write(java.nio.file.Files.readAllBytes(f.toPath()));
+        }
+        return bo.toByteArray();
+    }
+
     private static File logDirectory() {
         String override = System.getProperty("rally3d.logDir");
         File dir;

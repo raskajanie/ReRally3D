@@ -417,12 +417,12 @@ final class MapData {
 
     /** Null when the map can be played, else the first problem in plain words. */
     String validate() { /*T*/ final long $t = rally3d.core.Trace.in(376); try {
-        if (n < MIN_SEGS) return "Road too short (" + n + "/" + MIN_SEGS + " segments)";
-        if (name.trim().length() == 0) return "Give the map a name";
+        if (n < MIN_SEGS) return rally3d.core.Lang.t("Road too short (") + n + "/" + MIN_SEGS + rally3d.core.Lang.t(" segments)");
+        if (name.trim().length() == 0) return rally3d.core.Lang.t("Give the map a name");
         int a = effCp(0), b = effCp(1), c = effCp(2), f = effCp(3);
-        if (a < START_SEG + 3) return "Checkpoint 1 is too close to the start";
-        if (!(a < b && b < c && c < f)) return "Checkpoints must be in order: 1 < 2 < 3 < finish";
-        if (f > n - 4) return "Finish line needs 4+ segments of road after it";
+        if (a < START_SEG + 3) return rally3d.core.Lang.t("Checkpoint 1 is too close to the start");
+        if (!(a < b && b < c && c < f)) return rally3d.core.Lang.t("Checkpoints must be in order: 1 < 2 < 3 < finish");
+        if (f > n - 4) return rally3d.core.Lang.t("Finish line needs 4+ segments of road after it");
         return null;
      } finally { rally3d.core.Trace.out(376, $t); } }
 
@@ -592,7 +592,7 @@ final class MapData {
         if (roadPng != null) entry(z, "squares.png", roadPng);
         z.close();
         byte[] out = bo.toByteArray();
-        if (out.length > AddonPack.MAX_ZIP) throw new IOException("Map too big for a pack (" + (out.length / 1024) + " KB, max " + (AddonPack.MAX_ZIP / 1024) + " KB) - use smaller images");
+        if (out.length > AddonPack.MAX_ZIP) throw new IOException(rally3d.core.Lang.t("Map too big for a pack (") + (out.length / 1024) + rally3d.core.Lang.t(" KB, max ") + (AddonPack.MAX_ZIP / 1024) + rally3d.core.Lang.t(" KB) - use smaller images"));
         return out;
      } finally { rally3d.core.Trace.out(384, $t); } }
 

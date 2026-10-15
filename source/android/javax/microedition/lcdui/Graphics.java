@@ -31,10 +31,17 @@ public class Graphics {
      *  holds software-rasterised 3D (menu car preview) as transparent ARGB until recordPixelBlit hands it to the recorder. */
     UiRecorder rec;
     final boolean isRecording() { return rec != null; }
+    /** CPU UI over the GPU world (UI renderer = CPU): ARGB buffer, 0 = transparent (the world shows through), uploaded as a texture each frame. */
+    boolean layered;
+    final synchronized void setLayered(boolean on) {
+        if (on == layered) return;
+        layered = on;
+        if (rec == null && pixels != null) java.util.Arrays.fill(pixels, on ? 0 : 0xFF000000);
+    }
     final synchronized void setRecording(boolean on) {
         if (on == (rec != null)) return;
         rec = on ? new UiRecorder() : null;
-        java.util.Arrays.fill(pixels, on ? 0 : 0xFF000000);
+        java.util.Arrays.fill(pixels, on || layered ? 0 : 0xFF000000);
         if (on) { rec.clear(); recordClip(); }
     }
     private int dev(int logical) { return (int) Math.round(logical * scale); }
@@ -48,7 +55,7 @@ public class Graphics {
     final synchronized void resize(int pw, int ph, double scale) {
         this.pw = pw; this.ph = ph; this.scale = scale;
         pixels = new int[pw * ph];
-        if (rec == null) java.util.Arrays.fill(pixels, 0xFF000000);
+        if (rec == null && !layered) java.util.Arrays.fill(pixels, 0xFF000000);
         textCache.clear(); charCache.clear();
         int lw = (int) Math.round(pw / scale), lh = (int) Math.round(ph / scale);
         clipX = 0; clipY = 0; clipW = lw; clipH = lh;
@@ -58,7 +65,7 @@ public class Graphics {
     /** True in GPU UI mode (draw calls are recorded for the GL thread). */
     public final boolean isUiRecording() { return rec != null; }
     /** GPU layered frame: this graphics is a transparent UI layer over the GPU-rendered world. */
-    public boolean hasAlpha() { return rec != null; }
+    public boolean hasAlpha() { return rec != null || layered; }
     /** Starts a GPU-composited world frame: everything drawn before is erased (recorded as one CLEAR op). */
     public void clearTransparent() {
         if (rec != null) { rec.clear(); return; }
@@ -129,7 +136,7 @@ public class Graphics {
                     int r = (sr + ((d >> 16) & 255) * ia) / 255;
                     int g = (sg + ((d >> 8) & 255) * ia) / 255;
                     int b = (sb + (d & 255) * ia) / 255;
-                    pixels[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    pixels[idx] = layered && (d >>> 24) == 0 ? (a << 24) | (argb & 0xFFFFFF) : 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }
         }
@@ -224,7 +231,7 @@ public class Graphics {
                     int r = (((s >> 16) & 255) * a + ((d >> 16) & 255) * ia) / 255;
                     int g = (((s >> 8) & 255) * a + ((d >> 8) & 255) * ia) / 255;
                     int b = ((s & 255) * a + (d & 255) * ia) / 255;
-                    dst[didx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    dst[didx] = layered && (d >>> 24) == 0 ? s : 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }
         }
@@ -306,7 +313,7 @@ public class Graphics {
                     int r = (cr * a + ((d >> 16) & 255) * ia) / 255;
                     int gg = (cg * a + ((d >> 8) & 255) * ia) / 255;
                     int b = (cb * a + (d & 255) * ia) / 255;
-                    pixels[didx] = 0xFF000000 | (r << 16) | (gg << 8) | b;
+                    pixels[didx] = layered && (d >>> 24) == 0 ? (a << 24) | (cr << 16) | (cg << 8) | cb : 0xFF000000 | (r << 16) | (gg << 8) | b;
                 }
             }
         }

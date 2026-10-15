@@ -130,8 +130,8 @@ final class MapTemplates {
         }
         k = Math.max(0, Math.min(TRACK_NAMES.length - 1, k));
         m.theme = theme;
-        m.name = TRACK_NAMES[k].charAt(0) + TRACK_NAMES[k].substring(1).toLowerCase();
-        m.desc = TRACK_TEXT[k];
+        m.name = TRACK_NAMES[k].charAt(0) + TRACK_NAMES[k].substring(1).toLowerCase(java.util.Locale.ROOT);
+        m.desc = rally3d.core.Lang.t(TRACK_TEXT[k]);
         m.autoCheckpoints();
         m.touch();
         return m;

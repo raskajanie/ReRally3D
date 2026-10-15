@@ -493,4 +493,9 @@ implements CommandListener {
     void vibrate(int n) {
         this.display.vibrate(n);
     }
+
+    /** Short pulse with an amplitude 1..255 (impact strength); no-op where unsupported. */
+    void vibrate(int ms, int amplitude) {
+        rally3d.desktop.Platform.vibrate(ms, amplitude);
+    }
 }

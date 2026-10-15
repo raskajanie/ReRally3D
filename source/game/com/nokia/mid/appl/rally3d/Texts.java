@@ -83,7 +83,14 @@ class Texts {
     Texts() {
     }
 
+    private static int lastN, lastN2, lastN3;
+    private static String lastS, lastS2, lastS3, lastS4, lastS5;
+
+    /** Rebuilds every text in the current language (after a language change). */
+    static void reinit() { init(lastN, lastS, lastS2, lastS3, lastS4, lastS5, lastN2, lastN3); }
+
     static void init(int n, String string, String string2, String string3, String string4, String string5, int n2, int n3) {
+        lastN = n; lastS = string; lastS2 = string2; lastS3 = string3; lastS4 = string4; lastS5 = string5; lastN2 = n2; lastN3 = n3;
         trackNames = new String[12];
         carNames = new String[4];
         playerNames = new String[4];
@@ -119,7 +126,7 @@ class Texts {
         autoAccelOffText = Texts.text(5);
         autoAccelOnText = Texts.text(6);
         playerNameMenu = Texts.text(45);
-        pcSettings = "Display / FPS (PC)";
+        pcSettings = rally3d.core.Lang.t("Display / FPS");
         playerNameLabel = Texts.text(46);
         Texts.helpPages[0] = Texts.text(22);
         stringArray[0] = string2;

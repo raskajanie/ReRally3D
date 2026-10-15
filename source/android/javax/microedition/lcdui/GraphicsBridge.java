@@ -12,6 +12,8 @@ public final class GraphicsBridge {
     /** GPU UI mode on/off for this Graphics (draw calls recorded for the GL thread instead of rasterised on the CPU). */
     public static void setRecording(Graphics g, boolean on) { g.setRecording(on); }
     public static boolean isRecording(Graphics g) { return g.isRecording(); }
+    /** CPU UI layer over the GPU world: transparent ARGB buffer instead of the opaque RGB frame. */
+    public static void setLayered(Graphics g, boolean on) { g.setLayered(on); }
     public static UiRecorder recorder(Graphics g) { return g.rec; }
     /** Straight-alpha ARGB pixels of an image (do not modify). */
     public static int[] imageArgb(Image img) { return img.argb; }

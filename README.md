@@ -2,7 +2,7 @@
 
 3D rally racing game for **PC (Java 21, Windows)** and **Android (8.0+)**. Single player (Championship, Time Trial, Ghost Race), **LAN multiplayer up to 32 players**, **add-ons** (cars, skins, wheels, maps) and a built-in **Map Editor**.
 
-Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not fully tested on every device.
+Current version: **2.0-alpha65** (code 60). Alpha = built and compiled, not fully tested on every device.
 
 > Based on a J2ME (Nokia) rally game, ported to modern Java with its own software/GPU 3D engine (`javax.microedition.*` compatibility layer on top of LWJGL on PC and GLES 3.0 on Android). Check the rights of the original assets in `source/res` before publishing or redistributing.
 
@@ -10,6 +10,7 @@ Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not full
 ![yo](docs/screenshot.png)
 ## Contents
 
+0. **[MODDING-CHEATSHEET.md - short modding reference](MODDING-CHEATSHEET.md)** and **[INSTRUCTIONS.md - full modding guide: maps, cars, wheels, source](INSTRUCTIONS.md)**
 1. [Features](#features)
 2. [Quick start](#quick-start)
 3. [Build](#build)
@@ -19,8 +20,10 @@ Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not full
 7. [LAN multiplayer](#lan-multiplayer)
 8. [Add-ons (modding)](#add-ons-modding)
 9. [Map Editor](#map-editor)
+   - [Car Builder](#car-builder)
 10. [Modifying the game (source)](#modifying-the-game-source)
 11. [Saves, files, logs](#saves-files-logs)
+    - [Progress backup](#progress-backup)
 12. [Project layout](#project-layout)
 13. [Versioning rules](#versioning-rules)
 14. [Troubleshooting](#troubleshooting)
@@ -35,7 +38,14 @@ Current version: **2.0-alpha57** (code 52). Alpha = built and compiled, not full
 - Android: GLES 3.0 renderer, touch controls with editable button layout, finger camera, no storage permissions needed.
 - Add-ons from zip files: cars (own 3D model + texture + stats), skins, wheels, maps. Enable/disable on the fly. Add-ons are sent automatically to other players in multiplayer.
 - In-game Map Editor with pixel Painter, templates, test drive and fly view.
+- In-game **Car Builder**: build your own car or wheels from boxes / wedges / prisms in a live 3D view, texture every part separately, export a ready add-on zip.
+- Ghost Race with every car and every track (stock and custom), Championship with custom maps (own medals).
+- In-game **Instructions** (main menu): the original pages plus pages for modes, ghosts, add-ons, Map Editor, Car Builder and modding.
 - In-game log panel, crash/freeze diagnostics, safe (atomic) saving.
+- Progress backup: Settings -> "Save progress to a file" / "Restore progress from a file" (one zip with progress, medals, best times, unlocked cars, ghosts, add-ons, settings and custom-map records), see [Progress backup](#progress-backup). On Android uninstalling the app deletes its data, so keep this zip.
+- Add-ons are validated strictly (sizes, PNG headers, models, map sprites) because they can arrive from another player; a broken add-on is listed with a red error instead of crashing the game.
+- Linux / macOS build script `build-linux.sh` (PC jar + signed APK, no PowerShell).
+- [Modding cheat sheet](MODDING-CHEATSHEET.md) next to the full [modding guide](INSTRUCTIONS.md).
 - Offline build: JDK and all tools are bundled, no Android SDK needed.
 
 ## Quick start
@@ -58,6 +68,7 @@ Windows, nothing to install if `tools\jdk` is present:
 | `build-all.bat` (or `build-all.ps1`) | `Rally3D-Java21-GPU.jar` + `Rally3D-Android.apk` |
 | `compilepc.ps1` | PC jar only |
 | `compileandroid.ps1` | APK only (signed with `source\android-pkg\debug.jks`, alias `rally`, password `android`) |
+| `./build-linux.sh [apk\|pc\|all]` | Linux / macOS: same result without PowerShell, see below |
 
 **Without the bundled JDK** (a git clone has no `tools/jdk`, it is over 140 MB): install JDK 21 (e.g. Temurin) and put it in `PATH`, or unpack it into `tools/jdk` so that `tools/jdk/bin/javac.exe` exists. `tools/env.ps1` picks the bundled JDK first, then the system one.
 
@@ -67,7 +78,7 @@ What the scripts do:
 
 **Editing the Android manifest:** after changing `source/android-pkg/AndroidManifest.xml` the binary files in `source/android-pkg/prebuilt` (`AndroidManifest.xml`, `resources.arsc`, `res`) must be regenerated with a real `aapt`, otherwise the APK keeps the old manifest.
 
-**Linux / macOS:** the build scripts are PowerShell + Windows paths, and `source/lib` has only Windows natives. Add `lwjgl*-natives-linux` / `-macos` jars of the same version (3.4.2) to `source/lib`, then compile by hand:
+**Linux / macOS:** `./build-linux.sh apk` builds and signs `Rally3D-Android.apk` exactly like `compileandroid.ps1` (needs only JDK 21 in `PATH`; tested on Ubuntu 24.04). `./build-linux.sh pc` builds `Rally3D-Java21-GPU.jar`, but `source/lib` has only Windows natives: to **run** the jar on Linux / macOS add `lwjgl*-natives-linux` / `-macos` jars of the same version (3.4.2) to `source/lib` first. `./build-linux.sh` (or `all`) builds both. By hand (compile check / PC classes):
 
 ```bash
 CP=$(ls source/lib/*.jar | grep -v natives | tr '\n' ':')
@@ -113,9 +124,9 @@ After you finish a multiplayer race you watch the players still driving. PC: A /
 
 | Mode | What it is |
 |---|---|
-| **Championship** | Tracks in order. Medals: bronze unlocks the next track; bronze on the first tracks unlocks *Azure racer*, silver *Fast racer*, gold on all tracks *Good oldie*. Progress can be saved and continued. |
+| **Championship** | Tracks in order. Medals: bronze unlocks the next track; bronze on the first tracks unlocks *Azure racer*, silver *Fast racer*, gold on all tracks *Good oldie*. Enabled custom maps are listed after the 12 stock tracks. Progress can be saved and continued. |
 | **Time Trial** | Race the clock on any unlocked track. Best times are stored per track. |
-| **Ghost Race** | Race a recorded ghost of your best run (stored per track + car). After choosing your car you can pick the ghost of any car. |
+| **Ghost Race** | Race a recorded ghost of your best run (stored per track + car). Works with any car (stock or add-on) on any track (stock or custom map). After choosing your car you can pick the ghost of any car. |
 | **Multiplayer** | LAN race, 2-32 players, see below. |
 | **Add-ons** | Manage cars / wheels / maps packs. |
 | **Map Editor** | Build your own track. |
@@ -144,6 +155,9 @@ Main menu -> **Settings**. Items marked *(PC)* / *(Android)* exist only there. S
 | **Mouse camera** | Camera orbits the car with mouse / finger drag. Modified mode only. |
 | **Telemetry HUD** | Extra panel with race data on the HUD. Modified mode only. |
 | **Full function trace log** | Writes every function call to `rally3d-trace.log` (huge file). Turn it on only to hunt a bug. |
+| **Language** | Menus, HUD, help pages, Map Editor and Car Builder texts (English, Русский, Українська, Deutsch, Italiano, Français, Español; zh-CN / zh-TW files exist). Asked on the first launch. |
+| **Save progress to a file (backup)** | Writes one zip with all your progress, see [Progress backup](#progress-backup). |
+| **Restore progress from a file** | Reads such a zip back and applies it at once. |
 | **Game version: Modified / Vanilla** | Vanilla = original game behaviour without the extras above (menu animations, mouse camera, telemetry, sprite-LOD tweak). |
 
 ### Display / FPS
@@ -151,12 +165,12 @@ Main menu -> **Settings**. Items marked *(PC)* / *(Android)* exist only there. S
 | Setting | Meaning |
 |---|---|
 | **Resolution** | Internal render resolution, 27 presets. Output is scaled to the window/screen. |
-| **Frame limit** | 30...1000 FPS, `Custom value...`, or **Unlimited**. |
+| **Frame limit** | 30...1000 FPS, `Custom value...`, or **Unlimited** (PC and Android). |
 | **Fullscreen window (borderless)** *(PC)* | Borderless fullscreen, drawn above the Windows taskbar while the game has focus (Alt+Tab works normally). Also F11 / Alt+Enter. |
 | **FPS counter** | Shows FPS. If FPS sits exactly on your monitor refresh rate with the limit off, the log warns that driver V-sync is forcing it (turn V-sync off for `java.exe` in the GPU control panel). |
 | **Anti-aliasing** | Off / FXAA / FXAA Quality (FXAA 3.11 shader on GPU, CPU fallback otherwise). |
 | **3D renderer** | **GPU** (default) = OpenGL (PC) / GLES 3.0 (Android). **Software (multi-core)** = CPU raster, a fallback if the GPU path misbehaves. On repeated GPU failures the game switches to software by itself. |
-| **UI renderer** *(PC, only with GPU 3D)* | GPU = menus/HUD drawn by the GPU, CPU = drawn by Java2D. On Android the UI follows the 3D renderer. |
+| **UI renderer** *(only with GPU 3D)* | GPU = menus/HUD recorded and drawn by the GPU (default), CPU = drawn by the CPU and uploaded as a texture over the GPU world. If the GPU UI throws, the game falls back to CPU UI by itself (3D stays on the GPU). PC and Android. |
 | **CPU threads** | Worker threads for the software raster and helpers. Auto = number of cores. |
 | **Dynamic resolution** *(Android)* | Lowers the internal resolution when FPS drops. |
 | **V-sync** *(GPU only)* | Sync to the display refresh. |
@@ -174,6 +188,23 @@ Main menu -> **Settings**. Items marked *(PC)* / *(Android)* exist only there. S
 - Car state is sent 20 times a second; TAB shows ping (RTT).
 - Add-on cars, wheels and enabled maps of every player are transferred automatically (MD5-checked) before the race.
 - Duplicate nicknames are made unique automatically.
+
+### Ghost Race
+
+- Every (track, car) pair has its own best-run ghost: `ghosts/track-<track>-car-<carKey>.rpl` in the data folder (`~/.rally3d/ghosts` on PC, app data folder on Android).
+- `<track>` is `0..11` for stock tracks or the **custom map id** (>= 1000000, derived from map name + author, so the ghost survives re-exporting the map).
+- `<carKey>` is `0..3` for stock cars or `1000 + CRC32(name|author)` for add-on cars (so the ghost survives editing the car zip and does not depend on the position of the car in the list).
+- The *Select ghost* menu lists the ghosts of all installed cars **and** ghosts whose car add-on is no longer installed (drawn with your own car model then). *No ghost* = free run, your run is still recorded.
+- Ghost Race is also available in Vanilla mode.
+- Old ghost files (format v1 / v2, `track-N.rpl`) are still read; new ones are written as format v3 (adds the car name).
+
+### Championship on custom maps
+
+- **Ghost switch:** the first item of the Championship track menu is **Ghost: ON / OFF** (tap / Enter toggles it, the menu stays open so you can switch it right while choosing the track). With ON, after you pick the car the *Select ghost* menu appears, your run is recorded and a faster run replaces the saved ghost of that track + car (same ghost files as Ghost Race). Resumed (continued) races have no ghost. The switch is not saved between game starts.
+- Enabled custom maps are listed in the Championship track menu **after** the 12 stock tracks. They are never locked and do not unlock anything.
+- They have their own medals (gold / silver / bronze), stored in `mapmedals.txt` next to `maprecords.txt` (add-ons folder parent). *Championship -> Reset all* clears them too.
+- Medals are given like on stock tracks: you race against four reference times, finishing before the 3rd / 2nd / 1st reference time = bronze / silver / gold.
+- Reference ("par") times of a custom map: set `par=60,66,75,86` (4 ascending values in **seconds**) in the map's `addon.properties`, otherwise they are estimated from the road length (`segments * 3.9 / 4.3 / 4.9 / 5.7` tenths of a second).
 
 ## Add-ons (modding)
 
@@ -217,12 +248,30 @@ grip=1.3
 - **Wheels:** `type=wheels` + `wheel.png` and/or `wheel.syn`. Fits any of your cars, one wheels pack active at a time. Others see your wheels in multiplayer.
 - A PNG whose size is not a power of two is rejected with an error.
 - Examples: `examples/*.zip` (Red Rocket, Slow Tank, Gold Wheels, Test Blue skin, Test Lime wheels).
+- **Short reference: [MODDING-CHEATSHEET.md](MODDING-CHEATSHEET.md).**
+- **Full step-by-step modding guide (cars, wheels, maps, themes, source code): [INSTRUCTIONS.md](INSTRUCTIONS.md).**
+
+### Add-on limits and checks
+
+Add-ons are untrusted input (another player can send you one), so every zip is checked when it is read, in the menu and on receiving it in multiplayer. A rejected add-on stays in the list with a red error text and is never loaded.
+
+| What | Limit |
+|---|---|
+| zip | 64 MB, 64 files, 32 MB per file, 48 MB unpacked together |
+| `car.png`, `wheel.png` | width and height power of two, max 1024 |
+| `car.syn`, `wheel.syn` | valid header, vertices and indices, max 60000 indices |
+| `track.bin` | `4 + 20 x records` bytes, at least 24 bytes |
+| map `background.png`, `squares.png` | PNG, max 1024 x 1024 |
+| map `spriteN.png` + `spriteN.off` | sheet PNG max 4096 x 4096, `.off` = 48 bytes, every frame must lie inside the sheet |
+| `name`, `author`, `description` | cut to 24 / 24 / 90 characters |
+| enabled at once | 24 cars, 1 wheels pack |
+| multiplayer transfer | MD5-checked; received packs and buffers together max 160 MB, otherwise the pack is refused and the race starts with stock parts |
 
 ### Map add-on zip
 
-Normally produced by the Map Editor (`type=map`): `addon.properties`, `track.bin`, optional `background.png`, `squares.png` (road atlas), `spriteN.png/.off`. Enabled maps are listed first in Time Trial, Ghost Race and Multiplayer (not in Championship). Zip size limit 600 KB (Android import cuts files over 700 KB).
+Normally produced by the Map Editor (`type=map`): `addon.properties`, `track.bin`, optional `background.png`, `squares.png` (road atlas), `spriteN.png/.off`. Enabled maps are listed first in Time Trial, Ghost Race and Multiplayer, and after the 12 stock tracks in Championship (always unlocked, own medals, see [Championship on custom maps](#championship-on-custom-maps)). No practical zip size limit (safety ceiling 64 MB; one file inside a zip up to 32 MB).
 
-Ghost records for add-on cars are not saved (stock cars only).
+Ghost Race works with every car (stock and add-on) on every track (stock and custom map), see [Ghost Race](#ghost-race).
 
 ## Map Editor
 
@@ -236,6 +285,60 @@ Main menu -> **Map Editor**. Modes: **PATH / HEIGHT / LAND / PROPS / MARKS / WOR
 - **Painter**: LINE / RECT / OVAL (SOLID toggle, brush, mirror), FLIP H/V, ROLL (seam check), MAKE SEAMLESS, RGB sliders + HEX colour, **IMPORT PNG** from `addons/import` (sprites keep aspect, background is stretched, road = 256x32 atlas or one square tile).
 - Shortcuts (key-down only): Ctrl+Z / Ctrl+Y undo/redo, Ctrl+C/X/V/D copy/cut/paste/duplicate, Ctrl+A select all, Ctrl+S save, Ctrl+E export, Ctrl+T test, Ctrl+F fly, Ctrl+N new, Ctrl+O open, Del, arrows (+Shift extends), PgUp/PgDn, Home/End, 1-6 mode, Tab mode, F fit, +/- zoom, H help, Esc file menu. Painter: P E F I L R O M X, +/-.
 - Touch (Android): PATH panel has COPY / CUT / PASTE / DUP / SELECT ALL buttons.
+
+## Car Builder
+
+Main menu -> **Car Builder**. It is the car twin of the Map Editor: you build a car (or a set of wheels) from simple solids in a live 3D view, paint every part, and the game turns it into a normal add-on zip. No 3D program, no converter.
+
+### How a car is made
+
+- A model is a list of up to **64 parts**. A part is a **box**, a **wedge** (a box whose top rectangle is smaller or shifted: bonnet, windscreen, spoiler) or a **prism** (n-sided cylinder / cone: wheel arch, exhaust pipe, headlight).
+- Every part has its **own 16x16 texture** (a *material*). Light is baked into it - top bright, sides medium, bottom dark - because the engine has no lighting. Switch it off with *CAR page -> LIGHT BAKED: OFF* for flat colours.
+- Coordinates: **+Z = front of the car, +Y = up, X = left/right**. The ground is Y = 0; stock bodies start at Y = 0.5, are about 2.7 wide, 5.4 long and 1.5 tall.
+- Output: `car.syn` (mesh) + `car.png` (texture atlas: 128x128 for up to 16 parts, 256x256 for up to 64, one 32x32 tile per part) + `car.rcm` (the editable project; the game ignores it, the builder re-opens the car from it) + `addon.properties` (`type=car`/`wheels`, `builder=1`). Limit: 20000 triangles.
+
+### Screen layout
+
+- **Top bar:** FILE, UNDO, REDO, SAVE, ? (help, 8 short pages).
+- **3D view:** drag = turn the camera, two fingers / right mouse button = move + zoom, wheel = zoom, tap a part = select it (yellow frame). Buttons + / - / RESET / SPIN / GRID / GUIDE (GUIDE draws a stock car or wheel next to your model for scale).
+- **Stretch handles:** the selected part shows 6 square handles on its faces (red = X, green = Y, blue = Z). Drag one with mouse or finger to pull that face; the opposite face stays put (sizes snap to 0.05). Works in every tab and also on MIRROR parts.
+- **LOCK** (button above the view, key `L`): freezes the camera. Touching empty space does nothing (no turning, panning or pinch), only car parts and handles react: tap/touch a part = select it, drag a handle = stretch. Use + / - to zoom. Press LOCK again to unfreeze.
+- **Bottom strip:** one chip per part - tap to select.
+- **Four pages** (tabs): **PARTS**, **SHAPE**, **PAINT**, **CAR**.
+
+### The four pages
+
+| Page | What you do there |
+|---|---|
+| **PARTS** | `+ BOX`, `+ WEDGE`, `+ PRISM` add a part; copy (Ctrl+D), delete (Del), rename; **MIRROR** keeps an identical part on the other side of the car (lights, mirrors, wheel arches - build one side only); **HIDE** removes a part from the car without deleting it. |
+| **SHAPE** | Numbers of the selected part: `X`, `Y (UP)`, `Z (FRONT)` position, `WIDTH` / `HEIGHT` / `LENGTH`, `TOP WIDTH %` / `TOP LENGTH %` (taper), `TOP SHIFT X` / `TOP SHIFT Z` (slant), for prisms `AXIS`, `SIDES`, `END SIZE %` (100 = cylinder, smaller = cone). Tap `-` / `+` to change a value by the chosen **STEP** (0.05 / 0.1 / 0.25 / 0.5), or tap the number to type it. **DRAG X / Y / Z** pushes the part along an axis by dragging in the 3D view; CENTER X and ON FLOOR snap it. |
+| **PAINT** | Pick a colour from the palette (two slots: COLOR 1 and COLOR 2), tap the 16x16 grid to paint. **Patterns** fill a part with COLOR 1 / COLOR 2: SOLID, H-STRIPES, V-STRIPES, CHECKER, GRADIENT, CARBON, NOISE, FRAME, WINDOW. `ALL PARTS = COLOR 1` paints the whole car. **IMPORT PNG** shrinks a picture from `add-ons/import` to 16x16. |
+| **CAR** | Name, author, description, **TYPE: CAR / WHEELS**, **base car** (the stock car 1-4 whose stats are the starting point), the five **stats** (speed, accel, steer, steerMax, grip - same meaning as in `addon.properties`), LIGHT BAKED. |
+
+### FILE menu
+
+| Item | Result |
+|---|---|
+| **SAVE TO GAME** | Writes the add-on into `add-ons/cars` (or `wheels`) and switches it on. It appears in *Select car* at once, no restart. Saving again replaces the previous version (same name + author). |
+| **EXPORT ZIP...** | Writes the same zip anywhere (file dialog on PC, save dialog on Android) to share it. |
+| **NEW (TEMPLATE)...** | Starts from SPORT COUPE, HATCHBACK, PICKUP, BLANK BLOCK, WHEELS STANDARD, WHEELS MONSTER or WHEELS SLIM. |
+| **OPEN INSTALLED...** | Re-opens any add-on that was made with the builder (it has `car.rcm`). |
+| **HELP / EXIT** | Exit asks to save when there are unsaved changes. |
+
+Keys: Ctrl+Z / Ctrl+Y undo / redo, Ctrl+S save, Ctrl+E export, Ctrl+D copy part, Del delete, Tab next part, 1-4 pages, F reset view, H help.
+
+### Building wheels
+
+*FILE -> NEW -> WHEELS ...* (or *CAR page -> TYPE: WHEELS*). Build **one** wheel: the game draws it four times and spins it around the **X axis**, so the axle must run along X and the wheel must be centred at **Y = 0.54** (stock wheel radius 0.55). Use a prism with AXIS = X. The result is a `type=wheels` add-on that fits all your cars; one wheels pack is active at a time and other players see it in multiplayer.
+
+### Tips
+
+- Build one half of the car and use **MIRROR**; a typical car is 15-30 parts.
+- Leave wheel arches in the body (the game adds the wheels itself - do not model them into the body).
+- Use a few big parts with a good pattern rather than many tiny ones: the 16x16 material of each part is stretched over it.
+- Put the lowest point of the body at Y = 0.5 (the templates already do) or the car floats / sinks.
+- Name + author are the identity of the car: **do not rename an installed car** if you want to keep its Ghost Race records (see [Ghost Race](#ghost-race)). Cars made here work in multiplayer like any add-on car.
+- For a hand-modelled car (Blender) use an OBJ and `tools/obj2syn.py`, see [INSTRUCTIONS.md](INSTRUCTIONS.md).
 
 ## Modifying the game (source)
 
@@ -252,6 +355,9 @@ Main menu -> **Map Editor**. Modes: **PATH / HEIGHT / LAND / PROPS / MARKS / WOR
 | 2D drawing layer | `javax/microedition/lcdui/Graphics.java`, `UiRecorder.java` |
 | LAN protocol | `TheBluetooth.java`, `AddonSync.java` (**changing it requires a version bump**) |
 | Add-ons | `AddonPack`, `AddonManager`, `AddonUi`, `AddonSync` |
+| Ghosts (per track + car key) | `GhostReplay`, `RallyGame.chooseGhost / finishGhostRecord / ghostKeyOf`, `Platform.loadGhost / saveGhost / ghostKeys` |
+| Custom maps: ids, records, Championship medals, par times | `MapLibrary` |
+| In-game Instructions pages | `HelpPages.java` (extra pages), `Texts.helpPages` (original six) |
 | Map Editor | `MapEditor.java`, `MapTemplates.java`, `Painter.java`, `MapData.java` |
 | Saves | `SaveData.java`, `javax/microedition/rms/RecordStore.java`, `rally3d/core/SafeFile.java` |
 | Texts / languages | `Texts.java`, `Localization.java`, `source/res/lang.*` (including zh-CN and zh-TW) |
@@ -278,23 +384,48 @@ More: `GPU_MIGRATION.md` (GPU pipeline plan and history), `README.txt` (detailed
 | Add-ons | see [Add-ons](#add-ons-modding) | `.../files/addons` |
 | Logs | `rally3d-N.log` next to the jar (3 x 5 MB rotating) + `rally3d-native.log` from `run-gpu.bat` | `.../files/rally3d.log` (+ `.1`, `.2`), `crash.txt`, `rally3d-trace.log` |
 
+**Controllers (PC and Android).** Xbox / PlayStation style pads work the same on both: left stick steers and moves in menus, triggers = gas / brake, right stick = camera, A / X / Start = confirm (A = ready in the lobby), B / Y / Select = back, bumpers = previous / next item, right stick click = scoreboard. On Android the pad is detected automatically (also when plugged in later).
+
+**Language.** On the first launch the game asks for the language (English, Русский, Українська, Deutsch, Italiano, Français, Español; the system language is preselected). The choice is saved in `settings.properties` (`language=`) and can be changed any time in Settings > Language. Menus, HUD, help pages, Map Editor, Car Builder and add-on screens are translated; texts live in `source/res/i18n/<code>.txt` (`English text TAB translation`) and can be edited without recompiling the code. Code uses `rally3d.core.Lang.t("English text")`; a text without translation is shown in English.
+
+**Exporting the log (PC and Android).** Open the in-game log (PC: `F1`; Android: LOG button or triple-tap the top-left corner) and press **EXPORT** in its top-right corner. A save dialog opens (Android: the system file picker, because `Android/data/...` cannot be opened without root); the whole log (all rotated parts, oldest first) is saved as `rally3d-log-<date>.txt`.
+
 (`~` = your user home folder; on Windows `C:\Users\<name>\`.)
 
 - **Reset everything:** delete `~/.rally3d` (PC) / clear app data or uninstall (Android). Also delete `%APPDATA%\Rally3D` to remove add-ons.
-- Android: no storage permissions are used; uninstalling removes the data (except a possible Google Auto Backup, `allowBackup=true`).
+- Android: no storage permissions are used; uninstalling removes the data (except a possible Google Auto Backup, `allowBackup=true`). Use Settings -> "Save progress to a file" before uninstalling and "Restore progress from a file" afterwards.
 - Logs contain your local paths: **do not commit or post them unreviewed** (`.gitignore` already excludes `*.log`).
 - In-game log: **F1** on PC, **LOG** button on Android. Tap the top strip to change the filter (ALL / WARN+ERR / ERR), scroll with wheel / finger.
 - Logged: start/env, lifecycle, menus, tracks/races/saves/multiplayer, Java crashes (stack + last calls + last keys), **freezes** (no frame > 2.5 s, UI hang > 3.5 s: thread dump), hitches (> 200 ms frame), slow functions, `perf` every 30 s (FPS, worst frame, memory, top functions), memory pressure, every caught exception.
+
+### Progress backup
+
+Settings -> **Save progress to a file (backup)** writes `rally3d-progress-YYYYMMDD-HHmm.zip` (PC: save dialog, Android: system file picker, because `Android/data/...` cannot be opened without root). **Restore progress from a file** reads one back. Use it before uninstalling on Android (app data is deleted with the app) and to move your progress to another device.
+
+| In the zip | Content |
+|---|---|
+| `base/rms/` | progress, medals, best times, unlocked cars |
+| `base/ghosts/` | all ghosts |
+| `base/addons/` | all add-on zips and `enabled.txt` (the real add-ons folder, also on Windows where it is `%APPDATA%\Rally3D\addons`) |
+| `base/settings.properties` | settings |
+| `extra/` | custom-map records and medals (`maprecords.txt`, `mapmedals.txt`) |
+
+- Restore writes every file of the backup over the current one (each write is atomic, the old file is kept as `.bak`); files that are not in the backup are left alone. Add-ons and map records are re-read at once; **restart the game** to apply all settings.
+- Only known names are accepted (no `..`, no other folders), at most 2000 files, 64 MB per file, 256 MB in total. Temporary files (`.tmp`, `.part`, `.corrupt`) and the `export` folder are not saved.
+- Fixed in 2.0-alpha65: on Windows the backup used to miss the add-ons.
 
 ## Project layout
 
 ```
 build-all.bat / .ps1       build PC + Android
+build-linux.sh             build PC + Android on Linux / macOS (JDK 21)
 compilepc.ps1              PC jar
 compileandroid.ps1         APK
 run-gpu.bat                run the PC jar (JVM flags: ZGC generational, heap tuned)
 run-gpu-parity.bat         same + GPU/software parity check (debug)
 examples/                  sample add-on zips
+MODDING-CHEATSHEET.md      short modding reference
+INSTRUCTIONS.md            full modding guide
 tools/                     jdk (not in git), android.jar, dx.jar, apksigner, ApkPack.java,
                            instrument.py, obj2syn.py, env.ps1
 source/game/               shared game code (PC + Android)
@@ -326,7 +457,7 @@ Suffixes: `N.0` = checked and sure, `N.0-beta` = ran it, minor doubts, `N.0-alph
 | Android: GPU renderer crashes at start | The game detects it (`gpu.trying` guard file) and switches to the CPU renderer on the next start. Re-enable in Settings -> Display / FPS. |
 | `VERSION MISMATCH` in log | `Version.java` and the manifest differ: fix both. |
 | Cannot join a game | Different versions, firewall (TCP 47832 / UDP 47833), wrong IP (use the LAN address, not VPN), wrong password. |
-| Add-on rejected | PNG size is not a power of two, bad `addon.properties`, zip over 600 KB (maps). |
-| APK does not install over an old one | Different signing key. Uninstall first (loses data) or use the same `debug.jks`. |
+| Add-on rejected | PNG size is not a power of two, bad `addon.properties`, zip over 64 MB. |
+| APK does not install over an old one | Different signing key. Save progress to a file in the game first, uninstall, install, then restore it (or use the same `debug.jks`). |
 | `No JDK found` in build | `tools\jdk` is missing: install JDK 21 and add it to PATH, or unpack Temurin 21 into `tools\jdk`. |
 | Build error after manifest edit | Regenerate `source/android-pkg/prebuilt` with `aapt`. |

@@ -37,7 +37,7 @@ public final class Platform {
         for (int i = 0; i < RESOLUTIONS.length; i++) if (RESOLUTIONS[i][0] == w && RESOLUTIONS[i][1] == h) return i;
         return def;
      } finally { rally3d.core.Trace.out(577, $t); } }
-    public static final int[] FPS_VALUES = {30, 60, 75, 90, 120, 144, 165, 180, 200, 240, 300, 360};
+    public static final int[] FPS_VALUES = {30, 60, 75, 90, 120, 144, 165, 180, 200, 240, 300, 360, 0};   // 0 = unlimited (same as PC)
 
     public interface FrameListener { void onFrame(int[] pixels, int w, int h); }
 
@@ -96,7 +96,7 @@ public final class Platform {
                         if (c != null) { try { if (c.moveToFirst()) name = c.getString(0); } finally { c.close(); } }
                         if (name == null) name = "addon-" + System.currentTimeMillis() + ".zip";
                         name = name.replaceAll("[^\\p{L}\\p{N}._ -]", "_");
-                        if (!name.toLowerCase().endsWith(".zip")) name += ".zip";
+                        if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) name += ".zip";
                         java.io.File dir = addonsDir(), target = new java.io.File(dir, name);
                         for (int i = 2; target.exists(); i++) target = new java.io.File(dir, name.replaceAll("(?i)\\.zip$", "") + "-" + i + ".zip");
                         java.io.File tmp = new java.io.File(dir, target.getName() + ".part");
@@ -107,9 +107,9 @@ public final class Platform {
                         try {
                             byte[] buf = new byte[16384];
                             int n;
-                            while ((n = in.read(buf)) > 0) { total += n; if (total > 700 * 1024) break; out.write(buf, 0, n); }
+                            while ((n = in.read(buf)) > 0) { total += n; if (total > 64 * 1024 * 1024) break; out.write(buf, 0, n); }
                         } finally { out.close(); in.close(); }
-                        if (total > 700 * 1024) { tmp.delete(); rally3d.core.RLog.w("addon", "picked file too big, skipped: " + name); continue; }
+                        if (total > 64 * 1024 * 1024) { tmp.delete(); rally3d.core.RLog.w("addon", "picked file too big, skipped: " + name); continue; }
                         if (tmp.renameTo(target)) importCount++;
                     } catch (Throwable t) { rally3d.core.RLog.caught("Platform.onAddonPicked", t); rally3d.core.RLog.e("addon", "import failed: " + t); }
                 }
@@ -130,7 +130,7 @@ public final class Platform {
         String n = name == null ? "" : name.replaceAll("[^\\p{L}\\p{N}._ -]", "_").trim();
         if (n.length() == 0) n = "map";
         if (n.length() > 60) n = n.substring(0, 60);
-        if (!n.toLowerCase().endsWith(ext)) n += ext;
+        if (!n.toLowerCase(java.util.Locale.ROOT).endsWith(ext)) n += ext;
         return n;
      } finally { rally3d.core.Trace.out(554, $t); } }
 
@@ -192,6 +192,146 @@ public final class Platform {
         }
      } finally { rally3d.core.Trace.out(556, $t); } }
 
+    // ---- log export (log overlay -> EXPORT): system save dialog, so the log can be put anywhere without root access to Android/data
+    public static final int LOG_EXPORT_REQUEST = 7704;
+    private static volatile byte[] logExportData;
+    private static volatile boolean logExportBusy;
+
+    /** Opens the system file picker (save dialog) and writes the whole log (rally3d.log.2 + .1 + current, oldest first) to the chosen place. Does not block the caller. */
+    public static void exportLog() {
+        final android.app.Activity a = activity;
+        if (a == null) { rally3d.core.RLog.w("log", "export: no activity"); return; }
+        if (logExportBusy) return;
+        logExportBusy = true;
+        new Thread(new Runnable() { public void run() {
+            try {
+                rally3d.android.AndroidLog.flushBlocking();
+                byte[] data = collectLog();
+                if (data == null || data.length == 0) { logExportBusy = false; logToast(rally3d.core.Lang.t("Log is empty, nothing to export")); return; }
+                logExportData = data;
+                final String fname = "rally3d-log-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date()) + ".txt";
+                a.runOnUiThread(new Runnable() { public void run() {
+                    try {
+                        android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
+                        i.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                        i.setType("text/plain");
+                        i.putExtra(android.content.Intent.EXTRA_TITLE, fname);
+                        a.startActivityForResult(i, LOG_EXPORT_REQUEST);
+                    } catch (Throwable t) {
+                        rally3d.core.RLog.caught("Platform.exportLog", t);
+                        rally3d.core.RLog.e("log", "cannot open save dialog: " + t);
+                        logExportData = null; logExportBusy = false;
+                        logToast(rally3d.core.Lang.t("Cannot open file picker"));
+                    }
+                } });
+            } catch (Throwable t) {
+                rally3d.core.RLog.caught("Platform.exportLog", t);
+                logExportData = null; logExportBusy = false;
+                logToast(rally3d.core.Lang.t("Log export failed: ") + t);
+            }
+        } }, "log-export").start();
+    }
+
+    private static byte[] collectLog() throws java.io.IOException {
+        File main = rally3d.android.AndroidLog.logFile;
+        if (main == null) return null;
+        File[] parts = { new File(main.getPath() + ".2"), new File(main.getPath() + ".1"), main };
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        for (File f : parts) {
+            if (!f.isFile()) continue;
+            FileInputStream in = new FileInputStream(f);
+            try { int n; while ((n = in.read(buf)) > 0 && bo.size() < 16 * 1024 * 1024) bo.write(buf, 0, n); }
+            finally { in.close(); }
+        }
+        return bo.toByteArray();
+    }
+
+    /** Called from MainActivity.onActivityResult with the save dialog result (null = cancelled). */
+    public static void onLogExported(final android.content.Intent data) {
+        final byte[] bytes = logExportData;
+        logExportData = null;
+        if (data == null || data.getData() == null || bytes == null || appContext == null) { logExportBusy = false; return; }
+        final android.net.Uri u = data.getData();
+        new Thread(new Runnable() { public void run() {
+            try {
+                java.io.OutputStream out = appContext.getContentResolver().openOutputStream(u, "wt");
+                if (out == null) throw new java.io.IOException("cannot open the chosen file");
+                try { out.write(bytes); out.flush(); } finally { out.close(); }
+                String name = null;
+                android.database.Cursor c = appContext.getContentResolver().query(u, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null);
+                if (c != null) { try { if (c.moveToFirst()) name = c.getString(0); } finally { c.close(); } }
+                rally3d.core.RLog.i("log", "log exported: " + (name != null ? name : u) + " (" + (bytes.length / 1024 + 1) + " KB)");
+                logToast(rally3d.core.Lang.t("Log saved: ") + (name != null ? name : "ok") + " (" + (bytes.length / 1024 + 1) + rally3d.core.Lang.t(" KB)"));
+            } catch (Throwable t) {
+                rally3d.core.RLog.caught("Platform.onLogExported", t);
+                rally3d.core.RLog.e("log", "log export failed: " + t);
+                logToast(rally3d.core.Lang.t("Log export failed: ") + t.getMessage());
+            } finally { logExportBusy = false; }
+        } }, "log-export-write").start();
+    }
+
+    private static void logToast(final String msg) {
+        final android.app.Activity a = activity;
+        if (a == null) return;
+        a.runOnUiThread(new Runnable() { public void run() {
+            try { android.widget.Toast.makeText(a, msg, android.widget.Toast.LENGTH_LONG).show(); }
+            catch (Throwable t) { rally3d.core.RLog.caught("Platform.logToast", t); }
+        } });
+    }
+
+    /** Folder with the progress (rms/, ghosts/, settings.properties); the base of the progress backup. */
+    public static File progressDir() { return dataDir; }
+
+    public static final int FILE_PICK_REQUEST = 7703;
+    private static volatile java.util.concurrent.CountDownLatch pickLatch;
+    private static volatile byte[] pickedBytes;
+
+    /** System file picker (no storage permission needed): blocks the game thread, returns the bytes of the chosen file (max 256 MB) or null (cancelled / failed). */
+    public static byte[] pickFile(String title) {
+        final android.app.Activity a = activity;
+        if (a == null) return null;
+        pickedBytes = null;
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        pickLatch = latch;
+        a.runOnUiThread(new Runnable() { public void run() {
+            try {
+                android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                a.startActivityForResult(i, FILE_PICK_REQUEST);
+            } catch (Throwable t) { rally3d.core.RLog.caught("Platform.pickFile", t); rally3d.core.RLog.e("backup", "cannot open file picker: " + t); latch.countDown(); }
+        } });
+        try { latch.await(15, java.util.concurrent.TimeUnit.MINUTES); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        byte[] r = pickedBytes;
+        pickedBytes = null;
+        return r;
+    }
+
+    /** Called from MainActivity.onActivityResult with the picker result (null = cancelled). */
+    public static void onFilePicked(android.content.Intent data) {
+        try {
+            if (data != null && data.getData() != null && appContext != null) {
+                java.io.InputStream in = appContext.getContentResolver().openInputStream(data.getData());
+                if (in != null) {
+                    try {
+                        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                        byte[] buf = new byte[16384];
+                        int n;
+                        boolean tooBig = false;
+                        while ((n = in.read(buf)) > 0) { if (bo.size() + (long) n > rally3d.core.ProgressBackup.MAX_TOTAL) { tooBig = true; break; } bo.write(buf, 0, n); }
+                        if (tooBig) rally3d.core.RLog.w("backup", "picked file too big, ignored"); else pickedBytes = bo.toByteArray();
+                    } finally { in.close(); }
+                }
+            }
+        } catch (Throwable t) { rally3d.core.RLog.caught("Platform.onFilePicked", t); rally3d.core.RLog.e("backup", "read failed: " + t); pickedBytes = null; }
+        finally {
+            java.util.concurrent.CountDownLatch l = pickLatch;
+            if (l != null) l.countDown();
+        }
+    }
+
     public static File dataDir() { return dataDir; }
     public static File cacheDir() { return cacheDir; }
 
@@ -210,7 +350,7 @@ public final class Platform {
     static volatile int customFpsLimit = -1;
     static volatile boolean fullscreen = true;
     static volatile boolean showFps = false;
-    private static volatile boolean telemetryEnabled = false;
+    private static volatile boolean telemetryEnabled = true;
     private static volatile boolean vanillaMode = false;
     static volatile boolean uiAnimationsEnabled = true;
     static volatile boolean mouseLookEnabled = true;
@@ -241,11 +381,6 @@ public final class Platform {
      } finally { rally3d.core.Trace.out(169, $t); } }
 
     public static void load() { /*T*/ final long $t = rally3d.core.Trace.in(170); try {
-        try {
-            String lang = java.util.Locale.getDefault().toLanguageTag();
-            if (lang.startsWith("zh-TW") || lang.startsWith("zh-HK") || lang.contains("Hant")) System.setProperty("microedition.locale", "zh-TW");
-            else if (lang.startsWith("zh")) System.setProperty("microedition.locale", "zh-CN");
-        } catch (Throwable ignored) { rally3d.core.RLog.caught("Platform.load", ignored);}
         Properties p = new Properties();
         File cfg = config();
         if (!cfg.exists()) {
@@ -266,7 +401,8 @@ public final class Platform {
         if (customFpsLimit > 1000) customFpsLimit = 1000;
         if (customFpsLimit < -1) customFpsLimit = -1;
         showFps = Boolean.parseBoolean(p.getProperty("showFps", "false"));
-        telemetryEnabled = Boolean.parseBoolean(p.getProperty("telemetry", "false"));
+        telemetryEnabled = Boolean.parseBoolean(p.getProperty("telemetry", "true"));
+        language = p.getProperty("language");
         vanillaMode = Boolean.parseBoolean(p.getProperty("vanillaMode", "false"));
         uiAnimationsEnabled = Boolean.parseBoolean(p.getProperty("uiAnimations", "true"));
         noSpriteLod = Boolean.parseBoolean(p.getProperty("noSpriteLod", "true"));
@@ -282,6 +418,7 @@ public final class Platform {
         if (Boolean.parseBoolean(p.getProperty("traceAll", "false"))) rally3d.android.AndroidLog.setFullTrace(true);
         gpuRaster = Boolean.parseBoolean(p.getProperty("gpuRaster", "true"));
         vsync = Boolean.parseBoolean(p.getProperty("vsync", "true"));
+        gpuUiPref = Boolean.parseBoolean(p.getProperty("gpuUi", "true"));
         if (gpuTryFile().exists()) {   // the previous run died (or was killed) while the GPU renderer was starting
             gpuTryEnd();
             if (gpuRaster) { gpuRaster = false; rally3d.core.RLog.w("gpu", "previous start did not get past the first GPU frames -> GPU renderer switched off (Settings -> Display / FPS -> 3D renderer to try again)"); }
@@ -292,14 +429,25 @@ public final class Platform {
      } finally { rally3d.core.Trace.out(170, $t); } }
 
     // Gamepad: not used on Android (physical pads arrive as key events).
-    public static float controllerSteer() { return 0f; }
-    public static float controllerThrottle() { return 0f; }
-    public static float controllerBrake() { return 0f; }
-    public static float controllerCameraX() { return 0f; }
-    public static float controllerCameraY() { return 0f; }
-    public static boolean controllerThrottleActive() { return false; }
-    public static boolean controllerReadyDown() { return false; }
-    public static boolean isControllerConnected() { return false; }
+    private static volatile boolean controllerConnected, controllerThrottleActive, controllerReadyDown;
+    private static volatile float controllerSteer, controllerThrottle, controllerBrake, controllerCameraX, controllerCameraY;
+
+    /** Same contract as the desktop build: called by the controller code (rally3d.android.Gamepad) with the current analog state. */
+    public static void updateGamepad(boolean connected, float steer, float throttle, float brake, float cameraX, float cameraY, boolean throttleActive, boolean readyDown) {
+        controllerConnected = connected;
+        controllerSteer = steer; controllerThrottle = throttle; controllerBrake = brake;
+        controllerCameraX = cameraX; controllerCameraY = cameraY;
+        controllerThrottleActive = throttleActive; controllerReadyDown = readyDown;
+    }
+    public static void setControllerReady(boolean down) { controllerReadyDown = down; }
+    public static float controllerSteer() { return controllerSteer; }
+    public static float controllerThrottle() { return controllerThrottle; }
+    public static float controllerBrake() { return controllerBrake; }
+    public static float controllerCameraX() { return controllerCameraX; }
+    public static float controllerCameraY() { return controllerCameraY; }
+    public static boolean controllerThrottleActive() { return controllerThrottleActive; }
+    public static boolean controllerReadyDown() { return controllerReadyDown; }
+    public static boolean isControllerConnected() { return controllerConnected; }
 
     /** Highest refresh rate (Hz) the default display supports (current rate if the mode list is unavailable). */
     public static float maxRefreshRate() { /*T*/ final long $t = rally3d.core.Trace.in(236); try {
@@ -346,11 +494,13 @@ public final class Platform {
         p.setProperty("antiAliasing", String.valueOf(antiAliasing));
         p.setProperty("cpuThreads", String.valueOf(cpuThreads));
         p.setProperty("gpuRaster", String.valueOf(gpuRaster));
+        p.setProperty("gpuUi", String.valueOf(gpuUiPref));
         p.setProperty("vsync", String.valueOf(vsync));
         p.setProperty("fps", String.valueOf(fpsIndex));
         if (customFpsLimit >= 0) p.setProperty("fpsLimit", String.valueOf(customFpsLimit));
         p.setProperty("showFps", String.valueOf(showFps));
         p.setProperty("telemetry", String.valueOf(telemetryEnabled));
+        if (language != null) p.setProperty("language", language);
         p.setProperty("vanillaMode", String.valueOf(vanillaMode));
         p.setProperty("calibrated", String.valueOf(calibrated));
         p.setProperty("uiAnimations", String.valueOf(uiAnimationsEnabled));
@@ -400,7 +550,7 @@ public final class Platform {
     }
     public static int currentFpsLimit() { return customFpsLimit >= 0 ? customFpsLimit : FPS_VALUES[fpsIndex]; }
     public static void setFpsLimit(int limit) { /*T*/ final long $t = rally3d.core.Trace.in(174); try {
-        limit = clamp(limit, 30, 1000);
+        if (limit != 0) limit = clamp(limit, 30, 1000);   // 0 = unlimited
         for (int i = 0; i < FPS_VALUES.length; i++) {
             if (FPS_VALUES[i] == limit) { fpsIndex = i; customFpsLimit = -1; save(); return; }
         }
@@ -418,6 +568,10 @@ public final class Platform {
     /** Watching others: orbit camera works even if "Mouse camera" is off (not in Vanilla mode). */
     public static boolean isSpectateLookEnabled() { return spectating && !vanillaMode; }
     public static boolean isShowFps() { return showFps; }
+    /** UI language chosen by the player (settings.properties "language"), null until the first-run choice was made. */
+    private static volatile String language;
+    public static String getLanguage() { return language; }
+    public static void setLanguage(String code) { language = code; save(); }
     public static boolean isTelemetryEnabled() { return telemetryEnabled && !vanillaMode; }
     public static void setTelemetryEnabled(boolean enabled) { telemetryEnabled = enabled; save(); }
     public static boolean isVanillaMode() { return vanillaMode; }
@@ -444,9 +598,9 @@ public final class Platform {
      } finally { rally3d.core.Trace.out(176, $t); } }
     /** Ghost of the best run for this exact track+car. Falls back to the old one-per-track file (caller checks its carIndex). */
     public static byte[] loadGhost(int trackIndex, int carIndex) { /*T*/ final long $t = rally3d.core.Trace.in(292); try {
-        if (trackIndex < 0 || trackIndex >= 12 || carIndex < 0 || carIndex > 3) return null;
+        if (trackIndex < 0 || carIndex < 0) return null;   // any stock track or custom map id, any car key (stock 0..3 or add-on >= 1000)
         File file = new File(ghostDir(), "track-" + trackIndex + "-car-" + carIndex + ".rpl");
-        if (!file.isFile()) return loadGhost(trackIndex);
+        if (!file.isFile()) return trackIndex < 12 && carIndex < 4 ? loadGhost(trackIndex) : null;   // old one-per-track file only exists for stock tracks
         try (FileInputStream in = new FileInputStream(file)) {
             byte[] b = new byte[(int) file.length()];
             int off = 0, n;
@@ -455,11 +609,27 @@ public final class Platform {
         } catch (Exception e) { rally3d.core.RLog.caught("Platform.loadGhost", e); return null; }
      } finally { rally3d.core.Trace.out(292, $t); } }
     public static boolean saveGhost(int trackIndex, int carIndex, byte[] data) { /*T*/ final long $t = rally3d.core.Trace.in(293); try {
-        if (trackIndex < 0 || trackIndex >= 12 || carIndex < 0 || carIndex > 3 || data == null || data.length == 0) return false;
+        if (trackIndex < 0 || carIndex < 0 || data == null || data.length == 0) return false;
         File target = new File(ghostDir(), "track-" + trackIndex + "-car-" + carIndex + ".rpl");
         try { rally3d.core.SafeFile.write(target, data); return true; }
         catch (Exception e) { rally3d.core.RLog.caught("Platform.saveGhost", e); rally3d.core.RLog.e("save", "FAILED to write ghost " + target + ": " + e); return false; }
      } finally { rally3d.core.Trace.out(293, $t); } }
+    /** Car keys that have a saved ghost file for this track (stock track or custom map id). */
+    public static int[] ghostKeys(int trackIndex) { /*T*/ final long $t = rally3d.core.Trace.in(732); try {
+        if (trackIndex < 0) return new int[0];
+        File[] files = ghostDir().listFiles();
+        if (files == null) return new int[0];
+        String prefix = "track-" + trackIndex + "-car-";
+        int[] out = new int[files.length];
+        int n = 0;
+        for (File f : files) {
+            String name = f.getName();
+            if (!name.startsWith(prefix) || !name.endsWith(".rpl")) continue;
+            try { out[n] = Integer.parseInt(name.substring(prefix.length(), name.length() - 4)); n++; }
+            catch (NumberFormatException e) { rally3d.core.RLog.caught("Platform.ghostKeys", e); }
+        }
+        return java.util.Arrays.copyOf(out, n);
+     } finally { rally3d.core.Trace.out(732, $t); } }
     public static boolean areUiAnimationsEnabled() { return uiAnimationsEnabled; }
     public static void setUiAnimationsEnabled(boolean enabled) { uiAnimationsEnabled = enabled; save(); }
     /** "Mouse camera" on Android = one-finger drag on a free area of the screen orbits the camera around the car. */
@@ -486,6 +656,8 @@ public final class Platform {
     /** GPU renderer (GLES 3.0): 3D world in an FBO, UI replayed on the GPU, FXAA shader. Default on; falls back to the CPU renderer by itself. */
     private static volatile boolean gpuRaster = true;
     private static volatile boolean gpuFailed;
+    /** UI renderer: true = recorded lcdui calls replayed on the GPU (default), false = CPU-drawn UI uploaded as a texture over the GPU world. gpuUiBroken = the GPU UI threw once. */
+    private static volatile boolean gpuUiPref = true, gpuUiBroken = false;
     private static volatile boolean gpuFallbackPending;
     /** V-sync (EGL swap interval 1) for the GPU renderer. Default on. */
     private static volatile boolean vsync = true;
@@ -562,8 +734,18 @@ public final class Platform {
             throw new RuntimeException(c);
         }
      } finally { rally3d.core.Trace.out(583, $t); } }
-    public static boolean gpuUiSetting() { return false; }
-    public static void setGpuUi(boolean on) { }
+    /** True while lcdui draw calls are recorded and replayed on the GPU (needs the GPU renderer). */
+    public static boolean gpuUi() { return gpuUiPref && !gpuUiBroken && gpuLayered(); }
+    public static boolean gpuUiSetting() { return gpuUiPref; }
+    public static void setGpuUi(boolean on) { gpuUiPref = on; gpuUiBroken = false; save(); }
+    /** The GPU UI replay threw: CPU UI layer from the next frame (the 3D renderer stays on the GPU) until the user toggles it again. */
+    public static void failGpuUi(Throwable error) { /*T*/ final long $t = rally3d.core.Trace.in(629); try {
+        if (gpuUiBroken) return;
+        gpuUiBroken = true;
+        rally3d.core.RLog.e("gpu", "GPU UI failed, falling back to the CPU UI layer (re-enable in Settings -> Display / FPS -> UI renderer)", error);
+     } finally { rally3d.core.Trace.out(629, $t); } }
+    /** Recording (GPU UI) / transparent ARGB layer (CPU UI over the GPU world) / opaque RGB frame (CPU renderer) for this Graphics. */
+    private static void applyUiMode(Graphics g) { /*T*/ final long $t = rally3d.core.Trace.in(630); try { GraphicsBridge.setRecording(g, gpuUi()); GraphicsBridge.setLayered(g, gpuLayered() && !gpuUi());  } finally { rally3d.core.Trace.out(630, $t); } }
     public static void setGpuRaster(boolean on) { /*T*/ final long $t = rally3d.core.Trace.in(587); try {
         boolean was = gpuRaster && !gpuFailed;
         gpuRaster = on;
@@ -593,14 +775,39 @@ public final class Platform {
     public static int fpsIndex() { return fpsIndex; }
     public static boolean isFullscreen() { return true; }
 
-    public static boolean supportsVibration() { return false; }
+    private static android.os.Vibrator vibrator;
+    private static boolean vibratorChecked;
+    private static synchronized android.os.Vibrator vibrator() { /*T*/ final long $t = rally3d.core.Trace.in(627); try {
+        if (!vibratorChecked && appContext != null) {
+            vibratorChecked = true;
+            try {
+                Context c = appContext;
+                if (c != null) {
+                    android.os.Vibrator v = (android.os.Vibrator) c.getSystemService(Context.VIBRATOR_SERVICE);
+                    if (v != null && v.hasVibrator()) vibrator = v;
+                }
+            } catch (Throwable t) { rally3d.core.RLog.caught("Platform.vibrator", t); }
+        }
+        return vibrator;
+     } finally { rally3d.core.Trace.out(627, $t); } }
+    public static boolean supportsVibration() { return vibrator() != null; }
+    /** One-shot pulse; amplitude 1..255 (ignored by motors without amplitude control). Needs the VIBRATE permission (manifest). */
+    public static void vibrate(int ms, int amplitude) { /*T*/ final long $t = rally3d.core.Trace.in(628); try {
+        android.os.Vibrator v = vibrator();
+        if (v == null || ms <= 0) return;
+        try {
+            int amp = v.hasAmplitudeControl() ? Math.max(1, Math.min(255, amplitude)) : android.os.VibrationEffect.DEFAULT_AMPLITUDE;
+            android.os.VibrationEffect e = android.os.VibrationEffect.createOneShot(Math.min(ms, 300), amp);
+            v.vibrate(e, new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_GAME).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+        } catch (Throwable t) { rally3d.core.RLog.caught("Platform.vibrate", t); }
+     } finally { rally3d.core.Trace.out(628, $t); } }
     public static boolean isBackground() { GameView v = view; return v != null && !v.isSurfaceReady(); }
     public static void recordPerformance(int stage, long elapsedNanos) {}
 
     // ---- canvases / graphics ----
     public static void register(GameCanvas c) { synchronized (canvases) { canvases.add(new WeakReference<GameCanvas>(c)); } }
-    public static Graphics newGraphics() { /*T*/ final long $t = rally3d.core.Trace.in(589); try { Graphics g = GraphicsBridge.create(renderWidth(), renderHeight(), scale()); GraphicsBridge.setRecording(g, gpuLayered()); return g;  } finally { rally3d.core.Trace.out(589, $t); } }
-    public static void resizeGraphics(Graphics g) { /*T*/ final long $t = rally3d.core.Trace.in(590); try { GraphicsBridge.resize(g, renderWidth(), renderHeight(), scale()); GraphicsBridge.setRecording(g, gpuLayered());  } finally { rally3d.core.Trace.out(590, $t); } }
+    public static Graphics newGraphics() { /*T*/ final long $t = rally3d.core.Trace.in(589); try { Graphics g = GraphicsBridge.create(renderWidth(), renderHeight(), scale()); applyUiMode(g); return g;  } finally { rally3d.core.Trace.out(589, $t); } }
+    public static void resizeGraphics(Graphics g) { /*T*/ final long $t = rally3d.core.Trace.in(590); try { GraphicsBridge.resize(g, renderWidth(), renderHeight(), scale()); applyUiMode(g);  } finally { rally3d.core.Trace.out(590, $t); } }
 
     private static volatile Canvas current;
     public static Canvas currentCanvas() { return current; }
@@ -609,7 +816,7 @@ public final class Platform {
     public static void present(Graphics g) { /*T*/ final long $t = rally3d.core.Trace.in(177); try {
         FrameListener fl = frameListener;
         GameView v = view;
-        if (GraphicsBridge.isRecording(g) && gpuLayered()) {
+        if (g.hasAlpha() && gpuLayered()) {
             if (v != null) v.presentGpu(g);
         } else {
             if (fl != null && !GraphicsBridge.isRecording(g)) fl.onFrame(g.pixelBuffer(), g.physicalWidth(), g.physicalHeight());
@@ -630,8 +837,8 @@ public final class Platform {
                 save();
             }
             resizeGraphics(g);
-        } else if (GraphicsBridge.isRecording(g) != gpuLayered()) {
-            GraphicsBridge.setRecording(g, gpuLayered());   // renderer toggled
+        } else if (GraphicsBridge.isRecording(g) != gpuUi() || g.hasAlpha() != gpuLayered()) {
+            applyUiMode(g);   // renderer / UI renderer toggled or failed
             javax.microedition.m3g.Graphics3D.getInstance().dropHeldWorld();
         }
         adaptRenderResolution(g);

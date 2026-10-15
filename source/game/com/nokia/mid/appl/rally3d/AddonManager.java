@@ -69,7 +69,7 @@ final class AddonManager {
      } finally { rally3d.core.Trace.out(260, $t); } }
 
     private static byte[] readAll(File f) throws IOException { /*T*/ final long $t = rally3d.core.Trace.in(261); try {
-        if (f.length() > AddonPack.MAX_ZIP) throw new IOException("zip too big (max " + (AddonPack.MAX_ZIP / 1024) + " KB)");
+        if (f.length() > AddonPack.MAX_ZIP) throw new IOException(rally3d.core.Lang.t("zip too big (max ") + (AddonPack.MAX_ZIP / 1024) + rally3d.core.Lang.t(" KB)"));
         FileInputStream in = new FileInputStream(f);
         try {
             byte[] b = new byte[(int) f.length()];
@@ -79,7 +79,7 @@ final class AddonManager {
         } finally { in.close(); }
      } finally { rally3d.core.Trace.out(261, $t); } }
 
-    private static boolean isZip(File f) { return f.isFile() && f.getName().toLowerCase().endsWith(".zip"); }
+    private static boolean isZip(File f) { return f.isFile() && f.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".zip"); }
 
     /** Moves src to dir/name (adds -2, -3... when taken). Returns the new file or null. */
     private static File moveInto(File src, File dir, String name) { /*T*/ final long $t = rally3d.core.Trace.in(329); try {
@@ -225,6 +225,9 @@ final class AddonManager {
      } finally { rally3d.core.Trace.out(264, $t); } }
 
     /** Cars that appear in the car-select screen, in a stable order. */
+    /** Copy of the pack list for code outside this class (the list itself is only safe to touch under this class's lock). */
+    static synchronized ArrayList<AddonPack> snapshot() { return new ArrayList<AddonPack>(packs); }
+
     static synchronized List<AddonPack> enabledCars() { /*T*/ final long $t = rally3d.core.Trace.in(265); try {
         ArrayList<AddonPack> out = new ArrayList<AddonPack>();
         for (AddonPack p : packs) if (p.enabled && p.error == null && !p.wheelsOnly && !p.mapOnly && out.size() < MAX_LOCAL_CARS) out.add(p);

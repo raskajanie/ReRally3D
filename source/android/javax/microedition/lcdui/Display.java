@@ -22,5 +22,5 @@ public class Display {
         }
     }
 
-    public boolean vibrate(int duration) { return false; }
+    public boolean vibrate(int duration) { rally3d.desktop.Platform.vibrate(Math.min(duration, 150), 90); return true; }
 }

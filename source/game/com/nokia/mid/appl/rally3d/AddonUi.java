@@ -47,7 +47,7 @@ final class AddonUi {
 
     void run() { /*T*/ final long $t = rally3d.core.Trace.in(301); try {
         int screenBefore = g.screenMode;
-        g.beginMenu("Add-ons");
+        g.beginMenu(rally3d.core.Lang.t("Add-ons"));
         g.menuHeaderStatic = false;
         g.menuSlide = 0;
         g.screenMode = 2;
@@ -152,10 +152,10 @@ final class AddonUi {
     private void toggleRow(int i) { /*T*/ final long $t = rally3d.core.Trace.in(307); try {
         if (i < 0 || i >= rows.size()) return;
         AddonPack p = rows.get(i);
-        if (p.error != null) { toast("Error: " + p.error); return; }
+        if (p.error != null) { toast(rally3d.core.Lang.t("Error: ") + p.error); return; }
         AddonManager.setEnabled(p, !p.enabled);
         g.refreshLocalCars();
-        if (p.mapOnly) toast(p.enabled ? "Map on: it is first in the track lists" : "Map off");
+        if (p.mapOnly) toast(p.enabled ? rally3d.core.Lang.t("Map on: it is first in the track lists") : rally3d.core.Lang.t("Map off"));
      } finally { rally3d.core.Trace.out(307, $t); } }
 
     private void deleteRow(int i) { /*T*/ final long $t = rally3d.core.Trace.in(308); try {
@@ -163,7 +163,7 @@ final class AddonUi {
         AddonPack p = rows.get(i);
         g.addonUi = null;   // the confirm dialog is a regular menu: drop our overlay while it is up
         boolean yes;
-        try { yes = g.confirm("Delete \"" + p.name + "\" completely?"); }
+        try { yes = g.confirm(rally3d.core.Lang.t("Delete \"") + p.name + rally3d.core.Lang.t("\" completely?")); }
         finally { g.addonUi = this; g.screenMode = 2; }
         g.redrawBackground = true;
         if (!yes) return;
@@ -171,18 +171,18 @@ final class AddonUi {
         g.refreshLocalCars();
         g.evictUnusedAddonCars();
         RLog.i("addon", "ui delete '" + p.name + "' ok=" + ok);
-        if (!ok) toast("Could not delete file " + p.file);
+        if (!ok) toast(rally3d.core.Lang.t("Could not delete file ") + p.file);
         open[tab] = null;
         reload();
      } finally { rally3d.core.Trace.out(308, $t); } }
 
     private void addZip() { /*T*/ final long $t = rally3d.core.Trace.in(309); try {
         HashSet<String> known = new HashSet<String>();
-        for (AddonPack p : AddonManager.packs) known.add(p.file);
+        for (AddonPack p : AddonManager.snapshot()) known.add(p.file);
         int added = rally3d.desktop.Platform.importAddons();
         RLog.i("addon", "import: " + added + " zip(s) added");
         AddonManager.rescan();
-        for (AddonPack p : new ArrayList<AddonPack>(AddonManager.packs)) {   // a freshly added valid pack goes on right away
+        for (AddonPack p : AddonManager.snapshot()) {   // a freshly added valid pack goes on right away
             if (p.error == null && !p.enabled && p.file != null && !known.contains(p.file)) {
                 AddonManager.setEnabled(p, true);
                 tab = AddonManager.kindOf(p);   // jump to the tab where the new pack lives
@@ -197,8 +197,8 @@ final class AddonUi {
     private void help() { /*T*/ final long $t = rally3d.core.Trace.in(310); try {
         g.addonUi = null;
         try {
-            g.showTextScreen("How to make an add-on", "An add-on is a zip archive. Put it into the add-ons folder:|" + shownDir()
-                    + "|or tap \"+ ZIP\".||Inside the zip:|addon.properties - name=, author=, description=, type=car|wheels|map, base=1..4, speed=, accel=, steer=, steerMax=, grip=|car.syn - your own 3D model (optional)|car.png - car skin (side 16/32/64/128/256..., max 1024)|wheel.png - wheel skin (same), wheel.syn - wheel model||type=wheels - wheels only: fitted to any of your cars, one wheels pack at a time, visible in multiplayer too.|type=map - custom map (PLACEHOLDER: the pack is listed in the MAPS tab, but the game cannot load it yet).||An enabled car appears in the car select screen. In multiplayer everybody sees it: the zip is sent to the opponent automatically.", 0L, 0);
+            g.showTextScreen(rally3d.core.Lang.t("How to make an add-on"), rally3d.core.Lang.t("An add-on is a zip archive. Put it into the add-ons folder:|") + shownDir()
+                    + rally3d.core.Lang.t("|or tap \"+ ZIP\".||Inside the zip:|addon.properties - name=, author=, description=, type=car|wheels|map, base=1..4, speed=, accel=, steer=, steerMax=, grip=|car.syn - your own 3D model (optional)|car.png - car skin (side 16/32/64/128/256..., max 1024)|wheel.png - wheel skin (same), wheel.syn - wheel model||type=wheels - wheels only: fitted to any of your cars, one wheels pack at a time, visible in multiplayer too.|type=map - custom map (PLACEHOLDER: the pack is listed in the MAPS tab, but the game cannot load it yet).||An enabled car appears in the car select screen. In multiplayer everybody sees it: the zip is sent to the opponent automatically."), 0L, 0);
         } finally { g.addonUi = this; g.screenMode = 2; g.redrawBackground = true; g.snapshotKeys(); }
      } finally { rally3d.core.Trace.out(310, $t); } }
 
@@ -248,19 +248,19 @@ final class AddonUi {
     /** Detail text of an expanded row, word-wrapped to the row width. */
     private List<String> detail(AddonPack p) { /*T*/ final long $t = rally3d.core.Trace.in(324); try {
         ArrayList<String> raw = new ArrayList<String>();
-        if (p.error != null) raw.add("Error: " + p.error);
-        if (p.author.length() > 0) raw.add("Author: " + p.author);
+        if (p.error != null) raw.add(rally3d.core.Lang.t("Error: ") + p.error);
+        if (p.author.length() > 0) raw.add(rally3d.core.Lang.t("Author: ") + p.author);
         if (p.desc.length() > 0) raw.add(p.desc);
         if (p.error == null) {
-            if (p.mapOnly) raw.add("Custom map" + (p.mapBin != null ? " (" + (p.mapBin.length - 4) / 20 + " pieces)" : "") + ". When on it is listed first in Time Trial, Ghost Race and Multiplayer. Edit it in Map Editor > File > Open.");
-            else if (p.wheelsOnly) raw.add("Wheels: " + (p.wheelSyn != null ? "model" : "") + (p.wheelSyn != null && p.wheelPng != null ? " + " : "") + (p.wheelPng != null ? "skin" : "") + ". One wheels pack at a time.");
+            if (p.mapOnly) raw.add("Custom map" + (p.mapBin != null ? " (" + (p.mapBin.length - 4) / 20 + rally3d.core.Lang.t(" pieces)") : "") + rally3d.core.Lang.t(". When on it is listed first in Time Trial, Ghost Race and Multiplayer. Edit it in Map Editor > File > Open."));
+            else if (p.wheelsOnly) raw.add(rally3d.core.Lang.t("Wheels: ") + (p.wheelSyn != null ? "model" : "") + (p.wheelSyn != null && p.wheelPng != null ? " + " : "") + (p.wheelPng != null ? "skin" : "") + rally3d.core.Lang.t(". One wheels pack at a time."));
             else {
-                raw.add("Base: car " + (p.base + 1) + (p.syn != null ? ", own model" : "") + (p.skin != null ? ", own skin" : ""));
-                raw.add("Speed " + speedOf(p) + "  accel x" + f1(p.accel));
-                raw.add("Steer x" + f1(p.steer) + "  grip x" + f1(p.grip));
+                raw.add(rally3d.core.Lang.t("Base: car ") + (p.base + 1) + (p.syn != null ? rally3d.core.Lang.t(", own model") : "") + (p.skin != null ? rally3d.core.Lang.t(", own skin") : ""));
+                raw.add(rally3d.core.Lang.t("Speed ") + speedOf(p) + rally3d.core.Lang.t("  accel x") + f1(p.accel));
+                raw.add(rally3d.core.Lang.t("Steer x") + f1(p.steer) + rally3d.core.Lang.t("  grip x") + f1(p.grip));
             }
         }
-        raw.add("File: " + p.file + (p.zip != null ? " (" + (p.zip.length / 1024 + 1) + " KB)" : ""));
+        raw.add(rally3d.core.Lang.t("File: ") + p.file + (p.zip != null ? " (" + (p.zip.length / 1024 + 1) + rally3d.core.Lang.t(" KB)") : ""));
         ArrayList<String> out = new ArrayList<String>();
         int maxW = g.width - 6 - 12;
         for (String line : raw) wrap(line, maxW, out);
@@ -303,13 +303,13 @@ final class AddonUi {
         g.drawWide(gr, g.titleUpImage, 0);
         g.drawWide(gr, g.titleDownImage, H - B);
         gr.setFont(g.fontBold);
-        g.drawText(gr, 0, (B - fh) / 2, "Add-ons", -86, 5);
+        g.drawText(gr, 0, (B - fh) / 2, rally3d.core.Lang.t("Add-ons"), -86, 5);
 
         // tabs: widths follow the label widths so "WHEELS" / "CARS" are never cut
         int tabY = B + 2, tabH = fh + 6, gap = 2;
         int[] lw = new int[3];
         int sum = 0;
-        for (int i = 0; i < 3; i++) { lw[i] = g.fontBold.stringWidth(TAB_NAMES[i]); sum += lw[i]; }
+        for (int i = 0; i < 3; i++) { lw[i] = g.fontBold.stringWidth(rally3d.core.Lang.t(TAB_NAMES[i])); sum += lw[i]; }
         int pad = Math.max(2, (W - 4 - gap * 2 - sum) / 3);
         int x = 2;
         for (int i = 0; i < 3; i++) {
@@ -320,7 +320,7 @@ final class AddonUi {
             panel(gr, x, tabY, tw, tabH, act ? PANEL_SEL : PANEL, act ? WHITE : 0xFFB7B7B7);
             gr.setFont(g.fontBold);
             int lx0 = x + (tw - lw[i]) / 2;
-            txt(gr, TAB_NAMES[i], lx0, tabY + 3, act ? YEL : DIM);
+            txt(gr, rally3d.core.Lang.t(TAB_NAMES[i]), lx0, tabY + 3, act ? YEL : DIM);
             // little dot when the tab has something switched on
             for (AddonPack q : AddonManager.ofKind(i)) if (q.enabled) { gr.setColor(YEL); gr.fillRect(x + tw - 5, tabY + 2, 3, 3); break; }
             x += tw + gap;
@@ -334,7 +334,7 @@ final class AddonUi {
         addBox[0] = 0; addBox[1] = H - B; addBox[2] = W / 2; addBox[3] = B;
         backBox[0] = W / 2; backBox[1] = H - B; backBox[2] = W - W / 2; backBox[3] = B;
         gr.setFont(g.fontBold);
-        g.drawText(gr, 6, fy, "+ ZIP", -86, 1);
+        g.drawText(gr, 6, fy, rally3d.core.Lang.t("+ ZIP"), -86, 1);
         g.drawText(gr, 4, fy, Texts.back, -86, 9);
 
         // list
@@ -359,7 +359,7 @@ final class AddonUi {
         helpBox[0] = 2; helpBox[1] = y + 2; helpBox[2] = W - 4; helpBox[3] = hh;
         panel(gr, 2, y + 2, W - 4, hh, PANEL, 0xFFB7B7B7);
         gr.setFont(g.fontBold);
-        g.drawText(gr, 0, y + 2 + 4, "? How to make an add-on", YEL, 5);
+        g.drawText(gr, 0, y + 2 + 4, rally3d.core.Lang.t("? How to make an add-on"), YEL, 5);
         y += hh + 4; total += hh + 4;
         contentH = total;
         clampScroll();
@@ -458,7 +458,7 @@ final class AddonUi {
         String name = clipTo(p.name, tmax, g.fontBold);
         txt(gr, name, tx, y + 3, p.enabled || p.error != null ? YEL : DIM);
         gr.setFont(g.fontSmall);
-        String sub = p.error != null ? "! error - tap for details" : subtitle(p);
+        String sub = p.error != null ? rally3d.core.Lang.t("! error - tap for details") : subtitle(p);
         txt(gr, clipTo(sub, tmax, g.fontSmall), tx, y + 3 + fh + 1, p.enabled ? WHITE : DIM);
 
         if (!isOpen(p)) return;
@@ -482,7 +482,7 @@ final class AddonUi {
             boolean on = p.enabled;
             panel(gr, lx, by, bw, fh + 8, on ? PANEL : PANEL_SEL, WHITE);
             gr.setFont(g.fontBold);
-            String lab = on ? "TURN OFF" : "TURN ON";
+            String lab = on ? rally3d.core.Lang.t("TURN OFF") : rally3d.core.Lang.t("TURN ON");
             txt(gr, lab, lx + (bw - g.fontBold.stringWidth(lab)) / 2, by + 4, YEL);
             offBtnBox.add(new int[] {lx, by, bw, fh + 8, idx});
         }
@@ -491,10 +491,10 @@ final class AddonUi {
     private static String f1(float v) { return String.valueOf(Math.round(v * 10f) / 10f); }
 
     private String subtitle(AddonPack p) { /*T*/ final long $t = rally3d.core.Trace.in(318); try {
-        String state = p.enabled ? "ON" : "OFF";
-        if (p.mapOnly) return state + "  map" + (p.author.length() > 0 ? "  " + p.author : "");
-        if (p.wheelsOnly) return state + "  wheels" + (p.author.length() > 0 ? "  " + p.author : "");
-        String s = state + "  speed " + speedOf(p);
+        String state = p.enabled ? rally3d.core.Lang.t("ON") : rally3d.core.Lang.t("OFF");
+        if (p.mapOnly) return state + rally3d.core.Lang.t("  map") + (p.author.length() > 0 ? "  " + p.author : "");
+        if (p.wheelsOnly) return state + rally3d.core.Lang.t("  wheels") + (p.author.length() > 0 ? "  " + p.author : "");
+        String s = state + rally3d.core.Lang.t("  speed ") + speedOf(p);
         if (p.author.length() > 0) s += "  " + p.author;
         return s;
      } finally { rally3d.core.Trace.out(318, $t); } }
@@ -508,9 +508,9 @@ final class AddonUi {
             int yy = y + used;
             panel(gr, x, yy, w, sh2 - 3, PANEL, WHITE);
             gr.setFont(g.fontBold);
-            g.drawText(gr, 0, yy + 3, "[ empty slot: map ]", DIM, 5);
+            g.drawText(gr, 0, yy + 3, rally3d.core.Lang.t("[ empty slot: map ]"), DIM, 5);
             gr.setFont(g.fontSmall);
-            g.drawText(gr, 0, yy + 3 + fh + 1, "custom maps will appear here", DIM, 5);
+            g.drawText(gr, 0, yy + 3 + fh + 1, rally3d.core.Lang.t("custom maps will appear here"), DIM, 5);
             used += sh2;
         }
         return used;
@@ -520,9 +520,9 @@ final class AddonUi {
         int x = 2, w = W - 6, h = baseRowH() + 3;
         panel(gr, x, y, w, h - 3, PANEL, WHITE);
         gr.setFont(g.fontBold);
-        g.drawText(gr, 0, y + 3, tab == TAB_WHEELS ? "[ no wheels ]" : "[ no cars ]", DIM, 5);
+        g.drawText(gr, 0, y + 3, tab == TAB_WHEELS ? rally3d.core.Lang.t("[ no wheels ]") : rally3d.core.Lang.t("[ no cars ]"), DIM, 5);
         gr.setFont(g.fontSmall);
-        g.drawText(gr, 0, y + 3 + fh + 1, "tap + ZIP at the bottom left", DIM, 5);
+        g.drawText(gr, 0, y + 3 + fh + 1, rally3d.core.Lang.t("tap + ZIP at the bottom left"), DIM, 5);
         return h;
      } finally { rally3d.core.Trace.out(320, $t); } }
 }

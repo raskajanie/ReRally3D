@@ -17,13 +17,16 @@ import rally3d.desktop.Platform;
  * GLES 3.0 presentation for the GPU renderer: owns the EGL context + window surface of the GameView surface and composes one frame
  * (3D world texture from Graphics3D + GPU-replayed UI layer) -> FXAA / upscale -> screen. Every method runs on the game thread.
  * The surface can come and go (app backgrounded): detach() releases only the window surface, the context and all GL objects survive.
+ * Threads: the game draws frames from several threads (midlet start-up, title screen, game loop) but an EGL context can be current on one thread only.
+ * So the context is NOT bound to a fixed owner: run() takes a lock, makes the context current on the calling thread, runs the task and releases it again.
  */
 public final class GpuRenderer {
     private EGLDisplay dpy = EGL14.EGL_NO_DISPLAY;
     private EGLContext ctx = EGL14.EGL_NO_CONTEXT;
     private EGLConfig cfg;
     private volatile EGLSurface surf = EGL14.EGL_NO_SURFACE;
-    private Thread owner;
+    private final java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+    private int runDepth;   // nesting of run() on the lock-holding thread (only touched under the lock)
     private int swapInterval = -1;
     private boolean glReady;
     private final int[] tmp = new int[1];
@@ -31,8 +34,8 @@ public final class GpuRenderer {
     // presentation
     private int program, vao, vbo, samplerLoc, aaLoc;
     // layers
-    private int compProgram, compVao, compVbo, compUiLoc, compWorldLoc, compUseWorldLoc;
-    private int composedTexture, composedFbo, uiTexture, uiFbo, layerW, layerH;
+    private int compProgram, compVao, compVbo, compUiLoc, compWorldLoc, compUseWorldLoc, compPremultLoc;
+    private int composedTexture, composedFbo, uiTexture, uiFbo, uiCpuTexture, layerW, layerH;
     private GpuUi gpuUi;
     private volatile int surfaceW, surfaceH;
     private long frames;
@@ -63,58 +66,87 @@ public final class GpuRenderer {
         RLog.i("gpu", "EGL " + ver[0] + "." + ver[1] + " context created (OpenGL ES 3)");
       }
 
-    /** Creates the window surface for the (valid) Surface and makes the context current on this thread. */
+    private void releaseCurrent() { EGL14.eglMakeCurrent(dpy, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT); }
+
+    /** Creates the window surface for the (valid) Surface, initialises GL objects once. The context is NOT left current on this thread. */
     public void attach(Surface s) {
-        if (attached()) return;
-        if (ctx == null || ctx == EGL14.EGL_NO_CONTEXT) createContext();
-        surf = EGL14.eglCreateWindowSurface(dpy, cfg, s, new int[] { EGL14.EGL_NONE }, 0);
-        if (surf == null || surf == EGL14.EGL_NO_SURFACE) { surf = EGL14.EGL_NO_SURFACE; throw new IllegalStateException("eglCreateWindowSurface failed: 0x" + Integer.toHexString(EGL14.eglGetError())); }
-        if (!EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) {
-            int err = EGL14.eglGetError();
-            EGL14.eglDestroySurface(dpy, surf); surf = EGL14.EGL_NO_SURFACE;
-            throw new IllegalStateException("eglMakeCurrent failed: 0x" + Integer.toHexString(err));
-        }
-        owner = Thread.currentThread();
-        swapInterval = -1;
-        applySwapInterval();
-        if (!glReady) initGl();
-        EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_WIDTH, tmp, 0); surfaceW = tmp[0];
-        EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, tmp, 0); surfaceH = tmp[0];
-        RLog.i("gpu", "EGL window surface " + surfaceW + "x" + surfaceH + ", renderer: " + glGetString(GL_RENDERER) + "; " + glGetString(GL_VERSION));
+        lock.lock();
+        try {
+            if (attached()) return;
+            if (ctx == null || ctx == EGL14.EGL_NO_CONTEXT) createContext();
+            surf = EGL14.eglCreateWindowSurface(dpy, cfg, s, new int[] { EGL14.EGL_NONE }, 0);
+            if (surf == null || surf == EGL14.EGL_NO_SURFACE) { surf = EGL14.EGL_NO_SURFACE; throw new IllegalStateException("eglCreateWindowSurface failed: 0x" + Integer.toHexString(EGL14.eglGetError())); }
+            if (!EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) {
+                int err = EGL14.eglGetError();
+                EGL14.eglDestroySurface(dpy, surf); surf = EGL14.EGL_NO_SURFACE;
+                throw new IllegalStateException("eglMakeCurrent failed: 0x" + Integer.toHexString(err));
+            }
+            try {
+                swapInterval = -1;
+                applySwapInterval();
+                if (!glReady) initGl();
+                EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_WIDTH, tmp, 0); surfaceW = tmp[0];
+                EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, tmp, 0); surfaceH = tmp[0];
+                RLog.i("gpu", "EGL window surface " + surfaceW + "x" + surfaceH + ", renderer: " + glGetString(GL_RENDERER) + "; " + glGetString(GL_VERSION));
+            } finally {
+                if (runDepth == 0) releaseCurrent();
+            }
+        } finally { lock.unlock(); }
       }
 
     /** Releases the window surface (surface lost, switch to the CPU canvas, app paused). The context stays. */
     public void detach() {
-        if (!attached()) return;
+        lock.lock();
         try {
-            EGL14.eglMakeCurrent(dpy, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-            EGL14.eglDestroySurface(dpy, surf);
-        } catch (Throwable t) { RLog.caught("GpuRenderer.detach", t); }
-        surf = EGL14.EGL_NO_SURFACE;
+            if (!attached()) return;
+            try {
+                releaseCurrent();
+                EGL14.eglDestroySurface(dpy, surf);
+            } catch (Throwable t) { RLog.caught("GpuRenderer.detach", t); }
+            surf = EGL14.EGL_NO_SURFACE;
+        } finally { lock.unlock(); }
       }
 
     /** Frees everything (GPU renderer given up). */
     public void destroy() {
+        lock.lock();
         try {
-            if (attached() && Thread.currentThread() == owner && glReady) {
-                if (gpuUi != null) gpuUi.dispose();
-            }
-        } catch (Throwable t) { RLog.caught("GpuRenderer.destroy", t); }
-        gpuUi = null;
-        detach();
-        try {
-            if (ctx != null && ctx != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(dpy, ctx);
-            if (dpy != EGL14.EGL_NO_DISPLAY) EGL14.eglTerminate(dpy);
-        } catch (Throwable t) { RLog.caught("GpuRenderer.destroy", t); }
-        ctx = EGL14.EGL_NO_CONTEXT; dpy = EGL14.EGL_NO_DISPLAY; glReady = false;
+            try {
+                if (attached() && glReady && gpuUi != null && EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) {
+                    try { gpuUi.dispose(); } finally { releaseCurrent(); }
+                }
+            } catch (Throwable t) { RLog.caught("GpuRenderer.destroy", t); }
+            gpuUi = null;
+            detach();
+            try {
+                if (ctx != null && ctx != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(dpy, ctx);
+                if (dpy != EGL14.EGL_NO_DISPLAY) EGL14.eglTerminate(dpy);
+            } catch (Throwable t) { RLog.caught("GpuRenderer.destroy", t); }
+            ctx = EGL14.EGL_NO_CONTEXT; dpy = EGL14.EGL_NO_DISPLAY; glReady = false;
+        } finally { lock.unlock(); }
       }
 
-    /** Runs a GL task with the context current. False = no surface / wrong thread (caller draws this frame in software). Exceptions propagate. */
+    /**
+     * Runs a GL task with the context current on the CALLING thread (any thread: game loop, title screen, midlet start-up).
+     * False = no surface / surface gone (caller draws this frame in software). Exceptions propagate. Nested calls reuse the current binding.
+     */
     public boolean run(Runnable task) {
         if (!attached()) return false;
-        if (Thread.currentThread() != owner) return false;
-        task.run();
-        return true;
+        lock.lock();
+        try {
+            if (!attached()) return false;
+            if (runDepth == 0 && !EGL14.eglMakeCurrent(dpy, surf, surf, ctx)) {
+                int err = EGL14.eglGetError();
+                if (err == 0x300E /* EGL_CONTEXT_LOST */) throw new IllegalStateException("EGL context lost");
+                RLog.w("gpu", "eglMakeCurrent failed: 0x" + Integer.toHexString(err) + " -> surface released");
+                detach();
+                return false;
+            }
+            runDepth++;
+            try { task.run(); }
+            finally { if (--runDepth == 0) releaseCurrent(); }
+            return true;
+        } finally { lock.unlock(); }
       }
 
     private void applySwapInterval() {
@@ -158,16 +190,18 @@ public final class GpuRenderer {
                 "#version 300 es\n" +
                 "precision highp float; precision highp sampler2D;\n" +
                 "in vec2 vUi; in vec2 vWorld; out vec4 color;\n" +
-                "uniform sampler2D uiTexture; uniform sampler2D worldTexture; uniform int useWorld;\n" +
+                "uniform sampler2D uiTexture; uniform sampler2D worldTexture; uniform int useWorld; uniform int uiPremult;\n" +
                 "void main(){\n" +
                 " vec4 u=texture(uiTexture,vUi);\n" +
                 " vec3 base=vec3(0.0);\n" +
                 " if(useWorld!=0){ vec4 w=texture(worldTexture,vWorld); base=w.rgb*w.a; }\n" +
-                " color=vec4(u.rgb+base*(1.0-u.a),1.0);\n" +   // the UI layer is premultiplied
+                " vec3 ui=uiPremult!=0 ? u.rgb : u.rgb*u.a;\n" +   // GPU UI layer is premultiplied, CPU UI layer is straight alpha
+                " color=vec4(ui+base*(1.0-u.a),1.0);\n" +
                 "}\n");
         compUiLoc = glGetUniformLocation(compProgram, "uiTexture");
         compWorldLoc = glGetUniformLocation(compProgram, "worldTexture");
         compUseWorldLoc = glGetUniformLocation(compProgram, "useWorld");
+        compPremultLoc = glGetUniformLocation(compProgram, "uiPremult");
         compVao = Gl.genVertexArray();
         compVbo = Gl.genBuffer();
         glBindVertexArray(compVao);
@@ -183,7 +217,7 @@ public final class GpuRenderer {
         glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, false, 24, 16);
         glBindVertexArray(0);
         composedTexture = Gl.genTexture(); composedFbo = Gl.genFramebuffer();
-        uiTexture = Gl.genTexture(); uiFbo = Gl.genFramebuffer();
+        uiTexture = Gl.genTexture(); uiFbo = Gl.genFramebuffer(); uiCpuTexture = Gl.genTexture();
         glReady = true;
       }
 
@@ -213,21 +247,33 @@ public final class GpuRenderer {
      * One GPU frame, no CPU round trip: replay the UI ops, compose world + UI, FXAA / upscale to the whole surface, swap.
      * worldTex = 3D world FBO texture of this frame or 0 (menus). Call inside run().
      */
-    public void presentLayers(UiRecorder rec, int w, int h, int worldTex, double uiScale) {
-        if (rec == null || w <= 0 || h <= 0) { glBindFramebuffer(GL_FRAMEBUFFER, 0); glClearColor(0f, 0f, 0f, 1f); glClear(GL_COLOR_BUFFER_BIT); swap(); return; }
+    public void presentLayers(UiRecorder rec, int[] ui, int w, int h, int worldTex, double uiScale) {
+        if ((rec == null && (ui == null || ui.length < w * h)) || w <= 0 || h <= 0) { glBindFramebuffer(GL_FRAMEBUFFER, 0); glClearColor(0f, 0f, 0f, 1f); glClear(GL_COLOR_BUFFER_BIT); swap(); return; }
         applySwapInterval();
         ensureLayerSize(w, h);
 
-        // GPU UI: replay the recorded lcdui calls into the UI layer. The list is consumed even when the replay throws.
-        glBindFramebuffer(GL_FRAMEBUFFER, uiFbo);
-        glViewport(0, 0, w, h);
-        glColorMask(true, true, true, true);
-        try {
-            if (gpuUi == null) gpuUi = new GpuUi();
-            gpuUi.execute(rec, w, h, uiScale);
-        } finally {
-            rec.reset();
-            glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+        final boolean gpuUiFrame = rec != null;
+        if (gpuUiFrame) {
+            // GPU UI: replay the recorded lcdui calls into the UI layer. The list is consumed even when the replay throws; a failure only
+            // disables the GPU UI (CPU UI layer from the next frame), never the whole GPU renderer.
+            glBindFramebuffer(GL_FRAMEBUFFER, uiFbo);
+            glViewport(0, 0, w, h);
+            glColorMask(true, true, true, true);
+            try {
+                if (gpuUi == null) gpuUi = new GpuUi();
+                gpuUi.execute(rec, w, h, uiScale);
+            } catch (RuntimeException | LinkageError error) { rally3d.core.RLog.caught("GpuRenderer.presentLayers", error);
+                RLog.caught("GpuRenderer.presentLayers", error);
+                Platform.failGpuUi(error);
+            } finally {
+                rec.reset();
+                glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+            }
+        } else {
+            // CPU UI: the Java-drawn ARGB layer (0 = transparent) becomes the UI texture
+            glBindTexture(GL_TEXTURE_2D, uiCpuTexture);
+            Gl.texParams(GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+            Gl.texImageArgb(w, h, ui);
         }
 
         // pass 1: world + UI -> composed texture (internal resolution)
@@ -239,10 +285,11 @@ public final class GpuRenderer {
         glUniform1i(compUiLoc, 0);
         glUniform1i(compWorldLoc, 1);
         glUniform1i(compUseWorldLoc, worldTex != 0 ? 1 : 0);
+        glUniform1i(compPremultLoc, gpuUiFrame ? 1 : 0);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, worldTex);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, uiTexture);
+        glBindTexture(GL_TEXTURE_2D, gpuUiFrame ? uiTexture : uiCpuTexture);
         glBindVertexArray(compVao);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 

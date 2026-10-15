@@ -12,7 +12,7 @@ final class AddonSync {
     static final int T_OFFER = 20, T_REQUEST = 21, T_CHUNK = 22;
     static final int SLOT_CAR = 0, SLOT_WHEELS = 1, SLOT_MAP = 2, SLOTS = 3;
     static final int CHUNK = 110;
-    /** Relay slots: the host re-offers every guest's packs to the other guests as slot 2 + (origin-1)*2 + slot. */
+    /** Relay slots: the host re-offers every guest's packs to the other guests as slot SLOTS + (origin-1)*SLOTS + slot (see vslot). */
     static final int MAX_PEERS = 32, ALL_SLOTS = SLOTS + SLOTS * MAX_PEERS;
     static int vslot(int origin, int slot) { return SLOTS + (origin - 1) * SLOTS + slot; }
     private static int originOf(int vslot) { return (vslot - SLOTS) / SLOTS + 1; }
@@ -53,6 +53,16 @@ final class AddonSync {
      } finally { rally3d.core.Trace.out(298, $t); } }
 
     synchronized void forgetRemotes() { remotes.clear(); }
+
+    /** Receive buffers + verified packs held at once: a hostile peer must not be able to make the game allocate hundreds of MB (every offer may claim MAX_ZIP). */
+    static final long MAX_SYNC_MEMORY = 160L * 1024 * 1024;
+
+    private synchronized long memoryInUse() {
+        long n = 0;
+        for (byte[] z : cache.values()) n += z.length;
+        for (Remote r : remotes.values()) { byte[] b = r.buf; if (b != null && !r.complete) n += b.length; }
+        return n;
+    }
 
     void setMine(int slot, byte[] zip) { synchronized (mine) { mine[slot] = zip; } }
     private byte[] mine(int slot) { synchronized (mine) { return mine[slot]; } }
@@ -95,7 +105,7 @@ final class AddonSync {
     /** Never throws: this runs on the network thread, a hostile or corrupt packet must not kill the receive loop. */
     void onPacket(int sender, byte[] p) { /*T*/ final long $t = rally3d.core.Trace.in(273); try {
         try { handle(sender, p); }
-        catch (RuntimeException e) { rally3d.core.RLog.caught("AddonSync.onPacket", e); markFailed(sender, p); }
+        catch (RuntimeException | OutOfMemoryError e) { rally3d.core.RLog.caught("AddonSync.onPacket", e); markFailed(sender, p); }
      } finally { rally3d.core.Trace.out(273, $t); } }
 
     private void markFailed(int sender, byte[] p) { /*T*/ final long $t = rally3d.core.Trace.in(299); try {
@@ -131,6 +141,10 @@ final class AddonSync {
             byte[] have;
             synchronized (this) { have = cache.get(hex(sha)); }
             if (have != null) { r.pack = have; r.complete = true; r.offered = true; return; }
+            if (memoryInUse() + size > MAX_SYNC_MEMORY) {
+                rally3d.core.RLog.w("addon", "peer " + sender + " offered a pack of " + size + " bytes (slot " + slot + "): refused, too much add-on data already held");
+                r.failed = true; r.offered = true; return;
+            }
             r.size = size; r.got = 0; r.requested = true; r.offered = true;   // buffer (<= MAX_ZIP) is allocated when the first chunk arrives, not for every offer
             rally3d.core.RLog.i("addon", "peer " + sender + " offers pack (slot " + slot + "), " + size + " bytes: requesting");
             net.sendTo(sender, new byte[]{T_REQUEST, 1, (byte) slot}, 3);
@@ -145,7 +159,11 @@ final class AddonSync {
         } else if (type == T_CHUNK && len > 5) {
             if (!r.requested || r.complete || r.failed) return;
             byte[] buf = r.buf;
-            if (buf == null) { if (r.size <= 0 || r.size > AddonPack.MAX_ZIP) return; buf = new byte[r.size]; r.have = new boolean[(r.size + CHUNK - 1) / CHUNK]; r.buf = buf; }
+            if (buf == null) {
+                if (r.size <= 0 || r.size > AddonPack.MAX_ZIP) return;
+                if (memoryInUse() + r.size > MAX_SYNC_MEMORY) { r.failed = true; rally3d.core.RLog.w("addon", "pack (slot " + slot + ") from peer " + sender + " refused: add-on memory limit"); return; }
+                buf = new byte[r.size]; r.have = new boolean[(r.size + CHUNK - 1) / CHUNK]; r.buf = buf;
+            }
             int off = (p[3] & 255) | (p[4] & 255) << 8 | (p[5] & 255) << 16 | (p[6] & 255) << 24;
             int n = len - 5;
             if (off < 0 || (long) off + n > buf.length || off % CHUNK != 0 || (n != CHUNK && off + n != buf.length) || 7 + n > p.length) { r.failed = true; return; }

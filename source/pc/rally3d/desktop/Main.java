@@ -11,6 +11,7 @@ public final class Main {
         LogConsole.install();
         LogConsole.info("startup", "Starting Rally 3D");
         rally3d.core.LogView.showLogButton = false;   // PC: log via F1 only
+        rally3d.core.LogView.exportButton = true;     // EXPORT in the open log overlay (save dialog), same as Android
         Platform.load();
         LogConsole.info("startup", "Settings loaded; output " + Platform.displayWidth() + "x" + Platform.displayHeight()
                 + ", internal render buffer " + Platform.renderWidth() + "x" + Platform.renderHeight());

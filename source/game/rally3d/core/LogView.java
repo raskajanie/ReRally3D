@@ -25,7 +25,21 @@ public final class LogView {
     public static volatile int rowLogical = 9;
     private static float dragRemainder;
 
-    public static final int BTN_LOG = 0, BTN_TAB = 1;
+    /** Set by the platform: true on Android, where the log file sits in Android/data (unreachable without root) - shows an EXPORT button in the open overlay. */
+    public static volatile boolean exportButton;
+
+    public static final int BTN_LOG = 0, BTN_TAB = 1, BTN_EXPORT = 2;
+
+    /** Height of the header strip of the overlay (filter line + EXPORT button), logical px. fh = height of one log row. */
+    public static int headerH(int h, int fh) { return exportButton ? Math.max(fh + 4, (int) (h * 0.08f)) : fh + 4; }
+
+    /** EXPORT button rect (top-right corner inside the open panel) -> out = {x, y, w, h}. */
+    public static void exportRect(int w, int h, int[] out) {
+        int right = w - w / 20, top = (int) (h * 0.2f);
+        int bh = headerH(h, rowLogical) - 2;
+        int bw = Math.max(40, Math.min(w / 4, bh * 4));
+        out[0] = right - bw - 2; out[1] = top + 1; out[2] = bw; out[3] = bh;
+     }
 
     public static void toggle() { visible = !visible; scroll = 0; }
 
@@ -50,6 +64,10 @@ public final class LogView {
             if (b == BTN_LOG && !showLogButton) continue;
             rect(b, w, h, r);
             if (x >= r[0] - pad && x < r[0] + r[2] + pad && y >= r[1] - pad && y < r[1] + r[3] + pad) return b;
+        }
+        if (visible && exportButton) {
+            exportRect(w, h, r);
+            if (x >= r[0] - pad && x < r[0] + r[2] + pad && y >= r[1] - pad && y < r[1] + r[3] + pad) return BTN_EXPORT;
         }
         return -1;
      } finally { rally3d.core.Trace.out(1, $t); } }

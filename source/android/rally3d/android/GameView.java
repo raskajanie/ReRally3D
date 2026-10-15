@@ -63,7 +63,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     // in-game log overlay (drawn by the game itself, rally3d.core.LogView): LOG / TAB buttons left of pause, triple-tap top-left as menu fallback
     private int cornerTaps;
     private long cornerFirstTap;
-    private int tabPointer = -1, swallowPointer = -1, logDragPointer = -1;
+    private int tabPointer = -1, swallowPointer = -1, logDragPointer = -1, exportPointer = -1;
     private float logDragLastY;
     // camera drag ("Mouse camera"): one free finger orbits the camera, double tap recenters it
     private int camId = -1;
@@ -151,8 +151,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                     tv.setText(text);
                     tv.setTextSize(10);
                     tv.setKeyListener(null);
-                    new AlertDialog.Builder(act).setTitle("Rally 3D crashed").setView(tv)
-                            .setPositiveButton("Close", new DialogInterface.OnClickListener() {
+                    new AlertDialog.Builder(act).setTitle(rally3d.core.Lang.t("Rally 3D crashed")).setView(tv)
+                            .setPositiveButton(rally3d.core.Lang.t("Close"), new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface d, int w) { finishApp(); }
                             }).setCancelable(false).show();
                 } catch (Throwable ignored) { rally3d.core.RLog.caught("GameView.run", ignored);}  } finally { rally3d.core.Trace.out(187, $t); } }
@@ -229,8 +229,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         final int w = g.physicalWidth(), h = g.physicalHeight();
         final int world = javax.microedition.m3g.Graphics3D.getInstance().takeGpuWorldTexture(w, h);
         final double sc = g.scale();
-        if (rec != null) {
-            Platform.runGpu(new Runnable() { public void run() { gpu.presentLayers(rec, w, h, world, sc); } });
+        final int[] ui = rec == null ? g.pixelBuffer() : null;   // CPU UI layer: the ARGB pixels are uploaded as the UI texture
+        if (rec != null || ui != null) {
+            Platform.runGpu(new Runnable() { public void run() { gpu.presentLayers(rec, ui, w, h, world, sc); } });
         }
         if (gpuTrying && gpu.frames() >= 180) { gpuTrying = false; Platform.gpuTryEnd(); }
         OverlayView ov = overlay;
@@ -388,7 +389,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             rubberPad(c, cx - w * 0.40f, r.top + press, cx + w * 0.40f, plateB, w * 0.14f, 9, on, al);
             btnText.setColor(Color.argb(210, 235, 235, 235));
             btnText.setTextSize(tsz * 0.5f);
-            c.drawText("GAS", cx, r.top + press + h * 0.085f - (btnText.descent() + btnText.ascent()) / 2f, btnText);
+            c.drawText(rally3d.core.Lang.t("GAS"), cx, r.top + press + h * 0.085f - (btnText.descent() + btnText.ascent()) / 2f, btnText);
         } else {
             float press = on ? h * 0.06f : 0f;
             float padT = r.top + h * 0.50f + press;
@@ -397,7 +398,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             rubberPad(c, r.left, padT, r.right, r.bottom, w * 0.10f, 6, on, al);
             btnText.setColor(Color.argb(210, 235, 235, 235));
             btnText.setTextSize(tsz * 0.5f);
-            c.drawText("BRAKE", cx, padT + (r.bottom - padT) * 0.15f - (btnText.descent() + btnText.ascent()) / 2f, btnText);
+            c.drawText(rally3d.core.Lang.t("BRAKE"), cx, padT + (r.bottom - padT) * 0.15f - (btnText.descent() + btnText.ascent()) / 2f, btnText);
         }
      } finally { rally3d.core.Trace.out(244, $t); } }
 
@@ -443,7 +444,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         if (editing) {
             btnText.setColor(Color.WHITE);
             btnText.setTextSize(tsz * 0.8f);
-            c.drawText("Drag buttons to any position", c.getWidth() / 2f, c.getHeight() * 0.07f, btnText);
+            c.drawText(rally3d.core.Lang.t("Drag buttons to any position"), c.getWidth() / 2f, c.getHeight() * 0.07f, btnText);
             for (int i = 0; i < 3; i++) {
                 RectF r = editBtns[i];
                 btnFill.setColor(editBtnDown == i ? Color.argb(230, 255, 230, 0) : Color.argb(200, 30, 30, 30));
@@ -494,6 +495,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             int x = (int) lx(e.getX(ai)), y = (int) ly(e.getY(ai));
             int b = rally3d.core.LogView.hit(x, y, lw, lh);
             if (b == rally3d.core.LogView.BTN_LOG) { rally3d.core.LogView.toggle(); swallowPointer = e.getPointerId(ai); return true; }
+            if (b == rally3d.core.LogView.BTN_EXPORT) { exportPointer = e.getPointerId(ai); swallowPointer = exportPointer; return true; }
             if (b == rally3d.core.LogView.BTN_TAB) {
                 tabPointer = e.getPointerId(ai);
                 rally3d.core.LogView.tabHeld = true;
@@ -513,6 +515,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         boolean up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP;
         boolean cancel = act == MotionEvent.ACTION_CANCEL;
         if (logDragPointer >= 0 && (cancel || (up && e.getPointerId(ai) == logDragPointer))) logDragPointer = -1;
+        if (exportPointer >= 0 && (cancel || (up && e.getPointerId(ai) == exportPointer))) {
+            exportPointer = -1;
+            if (up) Platform.exportLog();   // finger released on EXPORT: open the system file picker
+        }
         if (tabPointer >= 0 && (cancel || (up && e.getPointerId(ai) == tabPointer))) {
             tabPointer = -1;
             rally3d.core.LogView.tabHeld = false;
@@ -775,11 +781,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                     box.addView(bar);
                     previewButtons = true;
                     layoutButtons(getWidth(), getHeight());
-                    AlertDialog dlg = new AlertDialog.Builder(act).setTitle("Touch buttons size").setView(box).setCancelable(false)
-                            .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    AlertDialog dlg = new AlertDialog.Builder(act).setTitle(rally3d.core.Lang.t("Touch buttons size")).setView(box).setCancelable(false)
+                            .setPositiveButton(rally3d.core.Lang.t("OK"), new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface d, int w) { previewButtons = false; Platform.save(); }
                             })
-                            .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                            .setNegativeButton(rally3d.core.Lang.t("Cancel"), new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface d, int w) { previewButtons = false; Platform.setButtonScale(old); layoutButtons(getWidth(), getHeight()); }
                             }).create();
                     android.view.Window win = dlg.getWindow();
@@ -891,10 +897,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                     et.setImeOptions(EditorInfo.IME_ACTION_DONE);
                     et.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
                     AlertDialog dlg = new AlertDialog.Builder(act).setTitle(title).setView(et).setCancelable(false)
-                            .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                            .setPositiveButton(rally3d.core.Lang.t("OK"), new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface d, int w) { cb.accept(et.getText().toString()); }
                             })
-                            .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                            .setNegativeButton(rally3d.core.Lang.t("Cancel"), new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface d, int w) { cb.accept(null); }
                             }).create();
                     android.view.Window win = dlg.getWindow();

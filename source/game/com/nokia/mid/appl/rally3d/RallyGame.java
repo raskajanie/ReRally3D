@@ -105,7 +105,6 @@ implements Runnable {
     GhostReplay ghostRecorder;
     Vec3 ghostPosition = new Vec3();
     Vec3 ghostRotation = new Vec3();
-    int ghostRunStartTime;
     int ghostFinishMs;
 
     /** Real milliseconds since the race start (pause-safe: startTimeOffset is re-based on resume). */
@@ -166,6 +165,20 @@ implements Runnable {
     int hitQuad;
     int hitStrip;
     long lastVibrateTime = 0L;
+    long lastImpactTime = 0L;
+    /** Size of the last wall push-out (world units per frame); proxy for the speed component hitting the wall. */
+    float lastCollisionDepth = 0.0f;
+
+    /** Wall hit: pulse strength and length grow with how hard the car hit (normal speed relative to the car's top speed). Kept moderate on purpose. */
+    void impactVibrate(float normalSpeed, float topSpeed) { /*T*/ final long $t = rally3d.core.Trace.in(624); try {
+        long now = System.currentTimeMillis();
+        if (now - this.lastImpactTime < 140L) return;
+        float r = Math.max(0.0f, Math.min(1.0f, normalSpeed / Math.max(0.1f, topSpeed)));
+        if (r < 0.04f) return;   // scraping along a wall: no buzz
+        this.lastImpactTime = now;
+        float k = (float)Math.sqrt(r);
+        this.vibrate(25 + (int)(55.0f * k), 35 + (int)(105.0f * k));   // 25..80 ms, amplitude 35..140 of 255
+     } finally { rally3d.core.Trace.out(624, $t); } }
     static final int[] translucentPixels = new int[]{0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF, 0x55FFFFFF};
     String infoTitle;
     String infoSubtitle;
@@ -229,6 +242,7 @@ implements Runnable {
     /** Non-null while the add-ons screen is up: drawMenu hands the whole frame to it. */
     AddonUi addonUi;
     MapEditor mapEditor;
+    CarEditor carEditor;
     /** Non-null while the editor's free-fly preview runs (FlyView): renderFrame draws its HUD on top of the world. */
     FlyView flyView;
     int menuExitMode;
@@ -570,10 +584,10 @@ implements Runnable {
         RoadSegmentMesh.renderAll(this.g3d, this.roadBatch, roadCount, this.viewTransform);
         // Queue the cars with the road into the same renderer submission. The
         // old split forced a second synchronous GL readback every racing frame.
-        if (this.race.mode == 3 && this.ghostPlayback != null
+        if (this.ghostOn() && this.ghostPlayback != null
                 && this.ghostPlayback.sample(this.racing ? this.ghostMs() : 0, this.ghostPosition, this.ghostRotation)) {
-            int ghostCar = this.ghostPlayback.carIndex;
-            if (ghostCar < 0 || ghostCar >= this.localCars.size()) ghostCar = this.race.carIndex;
+            int ghostCar = this.localIndexForCarKey(this.ghostPlayback.carKey);
+            if (ghostCar < 0) ghostCar = this.race.carIndex;   // the ghost's car is not installed any more: drawn as the player's own car
             this.drawCar(this.ghostPosition, this.ghostRotation, ghostCar, false, 2);
         }
         if (this.race.mode == 2 && this.opponentPresent) {
@@ -618,7 +632,7 @@ implements Runnable {
         }
         if (this.racing) {
             if (rally3d.desktop.Platform.isShowFps()) {
-                this.drawText(graphics, this.viewX + 2, this.viewY + 2 + this.fontBoldHeight, "FPS " + this.fps, 0x00FF00, 0);
+                this.drawText(graphics, this.viewX + 2, this.viewY + 2 + this.fontBoldHeight, rally3d.core.Lang.t("FPS ") + this.fps, 0x00FF00, 0);
             }
             this.drawText(graphics, this.viewX + 2, this.viewY + 2, this.formatTime(this.spectating ? this.opponentRaceTime : this.race.raceTime), this.hudColor, 8);
             if (this.splitTimer > 0) {
@@ -652,8 +666,8 @@ implements Runnable {
         String keys = rally3d.desktop.Platform.isTouchDevice() ? "< / >" : "A / D";
         graphics.setFont(this.fontSmall);
         int y = this.viewY + 2;
-        this.drawText(graphics, 0, y, "SPECTATING: " + who + " (" + (this.spectateIndex + 1) + "/" + Math.max(1, count) + ")", 0xFFFFD060, 6);
-        this.drawText(graphics, 0, y + this.fontSmallHeight + 2, keys + " - switch player", 0xFFFFFFFF, 6);
+        this.drawText(graphics, 0, y, rally3d.core.Lang.t("SPECTATING: ") + who + " (" + (this.spectateIndex + 1) + "/" + Math.max(1, count) + ")", 0xFFFFD060, 6);
+        this.drawText(graphics, 0, y + this.fontSmallHeight + 2, keys + rally3d.core.Lang.t(" - switch player"), 0xFFFFFFFF, 6);
         graphics.setFont(this.fontBold);
      } finally { rally3d.core.Trace.out(251, $t); } }
 
@@ -698,7 +712,7 @@ implements Runnable {
         spd[0] = (int)(this.car.speed * 15.0f) + ""; tm[0] = this.formatTime(this.race.raceTime);
         png[0] = this.multiplayerPingMs < 0 ? "--" : this.multiplayerPingMs + "";
         fin[0] = this.raceFinished;
-        nm[1] = this.opponentName == null ? "Player 2" : this.opponentName; car[1] = this.carDef(this.opponentCar).name;
+        nm[1] = this.opponentName == null ? rally3d.core.Lang.t("Player 2") : this.opponentName; car[1] = this.carDef(this.opponentCar).name;
         spd[1] = (int)(Math.sqrt(this.opponentVelocity.v[0] * this.opponentVelocity.v[0] + this.opponentVelocity.v[2] * this.opponentVelocity.v[2]) * 15.0f) + "";
         fin[1] = this.opponentFinishTime >= 0;
         tm[1] = this.formatTime(fin[1] ? this.opponentFinishTime : this.opponentRaceTime);
@@ -706,7 +720,7 @@ implements Runnable {
         int k = 2;
         for (RemoteCar rc : this.extras.values()) {
             if (!rc.seen) continue;
-            nm[k] = rc.name == null ? "Player " + (rc.id + 1) : rc.name; car[k] = this.carDef(rc.car).name;
+            nm[k] = rc.name == null ? rally3d.core.Lang.t("Player ") + (rc.id + 1) : rc.name; car[k] = this.carDef(rc.car).name;
             spd[k] = (int)(Math.sqrt(rc.vel.v[0] * rc.vel.v[0] + rc.vel.v[2] * rc.vel.v[2]) * 15.0f) + "";
             fin[k] = rc.finishTime >= 0;
             tm[k] = this.formatTime(fin[k] ? rc.finishTime : this.race.raceTime);
@@ -714,10 +728,10 @@ implements Runnable {
             ++k;
         }
         final int pad = 6, gap = 10, fh = this.fontSmallHeight, rowH = fh + 3;
-        final int wSpd = Math.max(this.fontSmall.stringWidth("999"), this.fontSmall.stringWidth("km/h")) ;
-        final int wTime = Math.max(this.fontSmall.stringWidth("00:00"), this.fontSmall.stringWidth("TIME"));
-        final int wPing = Math.max(this.fontSmall.stringWidth("999 ms"), this.fontSmall.stringWidth("PING"));
-        int wName = this.fontSmall.stringWidth("PLAYER / CAR");
+        final int wSpd = Math.max(this.fontSmall.stringWidth("999"), this.fontSmall.stringWidth(rally3d.core.Lang.t("km/h"))) ;
+        final int wTime = Math.max(this.fontSmall.stringWidth("00:00"), this.fontSmall.stringWidth(rally3d.core.Lang.t("TIME")));
+        final int wPing = Math.max(this.fontSmall.stringWidth("999 ms"), this.fontSmall.stringWidth(rally3d.core.Lang.t("PING")));
+        int wName = this.fontSmall.stringWidth(rally3d.core.Lang.t("PLAYER / CAR"));
         for (int i = 0; i < cnt; i++) wName = Math.max(wName, this.fontSmall.stringWidth(nm[i] + " | " + car[i]));
         int panelW = pad * 2 + wName + gap + wSpd + gap + wTime + gap + wPing;
         final int maxW = this.viewW - 12;
@@ -729,10 +743,10 @@ implements Runnable {
         graphics.setClip(x, y, panelW, panelH);
         final int rPing = x + panelW - pad, rTime = rPing - wPing - gap, rSpd = rTime - wTime - gap;
         int ty = y + pad;
-        this.drawText(graphics, x + pad, ty, "PLAYER / CAR", -86, 1);
-        this.drawText(graphics, rSpd - this.fontSmall.stringWidth("km/h"), ty, "km/h", -86, 1);
-        this.drawText(graphics, rTime - this.fontSmall.stringWidth("TIME"), ty, "TIME", -86, 1);
-        this.drawText(graphics, rPing - this.fontSmall.stringWidth("PING"), ty, "PING", -86, 1);
+        this.drawText(graphics, x + pad, ty, rally3d.core.Lang.t("PLAYER / CAR"), -86, 1);
+        this.drawText(graphics, rSpd - this.fontSmall.stringWidth(rally3d.core.Lang.t("km/h")), ty, rally3d.core.Lang.t("km/h"), -86, 1);
+        this.drawText(graphics, rTime - this.fontSmall.stringWidth(rally3d.core.Lang.t("TIME")), ty, rally3d.core.Lang.t("TIME"), -86, 1);
+        this.drawText(graphics, rPing - this.fontSmall.stringWidth(rally3d.core.Lang.t("PING")), ty, rally3d.core.Lang.t("PING"), -86, 1);
         ty += rowH;
         for (int i = 0; i < cnt; i++) {
             String left = nm[i] + " | " + car[i];
@@ -745,8 +759,8 @@ implements Runnable {
             ty += rowH;
         }
         if (showTelemetry) {
-            String roadState = this.wheelsOffRoad > 0 ? "OFF ROAD" : "ON ROAD";
-            this.drawText(graphics, x + pad, ty, "STEER " + (int)this.car.steer + "  " + roadState + "  CHECKPOINT " + Math.min(4, this.race.checkpointsPassed + 1) + "/4", -1, 1);
+            String roadState = this.wheelsOffRoad > 0 ? rally3d.core.Lang.t("OFF ROAD") : rally3d.core.Lang.t("ON ROAD");
+            this.drawText(graphics, x + pad, ty, rally3d.core.Lang.t("STEER ") + (int)this.car.steer + "  " + roadState + rally3d.core.Lang.t("  CHECKPOINT ") + Math.min(4, this.race.checkpointsPassed + 1) + "/4", -1, 1);
         }
         graphics.setClip(0, 0, this.width, this.height);
         graphics.setFont(this.fontBold);
@@ -859,6 +873,23 @@ implements Runnable {
         if (index >= 0 && index < this.localCars.size()) return this.localCars.get(index);
         return this.stockCars[0];
      } finally { rally3d.core.Trace.out(278, $t); } }
+
+    /** Stable key of a car for ghost files: stock car = 0..3, add-on car = AddonPack.carKey() (>= 1000). */
+    int ghostKeyOf(int carIndex) { /*T*/ final long $t = rally3d.core.Trace.in(729); try {
+        CarDef d = this.carDef(carIndex);
+        if (d == null || d.pack == null) return carIndex >= 0 && carIndex < 4 ? carIndex : 0;
+        return d.pack.carKey();
+     } finally { rally3d.core.Trace.out(729, $t); } }
+
+    /** Index in localCars of the car with this ghost key, -1 when that car is not available (add-on switched off / deleted). */
+    int localIndexForCarKey(int key) { /*T*/ final long $t = rally3d.core.Trace.in(730); try {
+        if (key >= 0 && key < 4) return key < this.localCars.size() ? key : -1;
+        for (int i = 4; i < this.localCars.size(); i++) {
+            CarDef d = this.localCars.get(i);
+            if (d != null && d.pack != null && d.pack.carKey() == key) return i;
+        }
+        return -1;
+     } finally { rally3d.core.Trace.out(730, $t); } }
 
     Texture2D textureFromBytes(byte[] data) throws java.io.IOException { /*T*/ final long $t = rally3d.core.Trace.in(279); try {
         Image image = Image.createImage(data, 0, data.length);
@@ -976,7 +1007,7 @@ implements Runnable {
             if (done) { if (doneAt == 0L) doneAt = now; if (now - doneAt >= 1500L) break; }
             else if (downloading && !ui) {   // a download is really happening: show progress like the lobby does
                 ui = true;
-                this.beginMenu("Multiplayer Lobby");
+                this.beginMenu(rally3d.core.Lang.t("Multiplayer Lobby"));
                 this.addMenuItem("", 0);
                 this.showLeftSoftkey = false; this.showRightSoftkey = false;
                 this.showTextBlock = 1; this.showTitleBackground = 0; this.showArrows = false;
@@ -986,7 +1017,7 @@ implements Runnable {
             if (ui && now - lastUi > 150L) {
                 lastUi = now;
                 int pct = total > 0 ? (int)(got * 100L / total) : 0;
-                this.showAddonStatus("Downloading the other players' cars... " + pct + "%|" + (total / 1024) + " KB");
+                this.showAddonStatus(rally3d.core.Lang.t("Downloading the other players' cars... ") + pct + "%|" + (total / 1024) + rally3d.core.Lang.t(" KB"));
             }
             this.sleep(15);
             if (this.bluetooth.linkLost()) break;
@@ -1143,7 +1174,7 @@ implements Runnable {
                 all[7 + i] = new Billboard(Image.createImage(mp.mapSpritePng[i], 0, mp.mapSpritePng[i].length), new java.io.ByteArrayInputStream(mp.mapSpriteOff[i]));
             }
             this.billboards = all;
-        } catch (Exception e) { rally3d.core.RLog.caught("RallyGame.applyCustomLook", e);
+        } catch (Exception | OutOfMemoryError e) { rally3d.core.RLog.caught("RallyGame.applyCustomLook", e);
             rally3d.core.RLog.e("track", "map '" + mp.name + "': cannot apply its look: " + e);
         }
         // props of a type that has no sprite (unused custom slot, bad image) are dropped instead of crashing the renderer
@@ -1266,7 +1297,7 @@ implements Runnable {
         RemoteCar rc = this.extras.get(Integer.valueOf(id));
         if (rc == null) {
             rc = new RemoteCar(id);
-            rc.name = "Player " + (id + 1);
+            rc.name = rally3d.core.Lang.t("Player ") + (id + 1);
             this.slotPosition(id, rc.pos); rc.rot.set(this.car.rotation);
             this.extras.put(Integer.valueOf(id), rc);
             rally3d.core.RLog.i("mp", "extra player " + id + " appeared (total extras " + this.extras.size() + ")");
@@ -1304,7 +1335,7 @@ implements Runnable {
         if (rc == null) return;
         try { if (5 + nl <= b.length) rc.name = new String(b, 5, nl, "UTF-16BE").trim(); }
         catch (java.io.UnsupportedEncodingException e) { rally3d.core.RLog.caught("RallyGame.applyRelayedInfo", e); }
-        if (rc.name == null || rc.name.length() == 0) rc.name = "Player " + (origin + 1);
+        if (rc.name == null || rc.name.length() == 0) rc.name = rally3d.core.Lang.t("Player ") + (origin + 1);
         int oc = b[3];
         rc.stockCar = oc >= 0 && oc < 4 ? oc : 0;
         if (rc.car < REMOTE_BASE) rc.car = rc.stockCar;
@@ -1720,6 +1751,7 @@ implements Runnable {
                 }
             }
         }
+        this.lastCollisionDepth = n2 > 0 ? Math.abs(f) : 0.0f;
         if (n2 > 0) {
             this.car.position.add(this.car.position, this.pushOut);
             for (n = 0; n < 4; ++n) {
@@ -1979,8 +2011,8 @@ implements Runnable {
     /** Banner for a spectator (finished racer): only shows that somebody paused. */
     void mpSpectateBanner() { /*T*/ final long $t = rally3d.core.Trace.in(339); try {
         if (this.mpPausers.isEmpty()) { this.bannerText2 = null; return; }
-        this.bannerText = "GAME PAUSED";
-        this.bannerText2 = this.mpPausedNames() + " paused the game. Waiting for players...";
+        this.bannerText = rally3d.core.Lang.t("GAME PAUSED");
+        this.bannerText2 = this.mpPausedNames() + rally3d.core.Lang.t(" paused the game. Waiting for players...");
      } finally { rally3d.core.Trace.out(339, $t); } }
 
     /**
@@ -2018,17 +2050,17 @@ implements Runnable {
                 if (this.mpLeaveSince == 0L) this.mpLeaveSince = now;
                 if (now - this.mpLeaveSince >= MP_LEAVE_NANOS) { rally3d.core.RLog.i("mp", "local player left the race from the pause screen"); return -1; }
             } else this.mpLeaveSince = 0L;
-            this.bannerText = this.mpLocalPaused ? "PAUSED" : "GAME PAUSED";
-            if (this.mpLocalPaused && this.mpLeaveSince != 0L) this.bannerText2 = "Leaving...";
-            else if (!this.mpPausers.isEmpty()) this.bannerText2 = (this.mpLocalPaused ? "You and " : "") + this.mpPausedNames() + " paused the game. Waiting for players...";
-            else this.bannerText2 = "Pause again - resume | hold BRAKE 2 s - leave";
+            this.bannerText = this.mpLocalPaused ? rally3d.core.Lang.t("PAUSED") : rally3d.core.Lang.t("GAME PAUSED");
+            if (this.mpLocalPaused && this.mpLeaveSince != 0L) this.bannerText2 = rally3d.core.Lang.t("Leaving...");
+            else if (!this.mpPausers.isEmpty()) this.bannerText2 = (this.mpLocalPaused ? rally3d.core.Lang.t("You and ") : "") + this.mpPausedNames() + rally3d.core.Lang.t(" paused the game. Waiting for players...");
+            else this.bannerText2 = rally3d.core.Lang.t("Pause again - resume | hold BRAKE 2 s - leave");
             return 0;
         }
         // everybody is back: 3 s countdown, then the race goes on
         if (this.mpResumeAt == 0L) { this.mpResumeAt = now + MP_RESUME_NANOS; rally3d.core.RLog.i("mp", "all players back, resuming in 3 s"); }
         long left = this.mpResumeAt - now;
         if (left > 0L) {
-            this.bannerText = "Resuming in " + (int)((left + 999_999_999L) / 1_000_000_000L);
+            this.bannerText = rally3d.core.Lang.t("Resuming in ") + (int)((left + 999_999_999L) / 1_000_000_000L);
             this.bannerText2 = null;
             return 0;
         }
@@ -2160,8 +2192,9 @@ implements Runnable {
             }
             if (this.wheelsOffRoad > 0 && this.lastVibrateTime < (l = System.currentTimeMillis()) - 500L) {
                 this.lastVibrateTime = l;
-                if (this.saveData.vibrationOff == 0) {
-                    this.vibrate(250);
+                if (this.saveData.vibrationOff == 0 && rally3d.desktop.Platform.supportsVibration()) {
+                    // soft rumble on gravel / grass, a bit stronger the faster you go
+                    this.vibrate(35, 24 + (int)(36.0f * Math.min(1.0f, this.car.speed / Math.max(0.1f, f4))));
                 }
             }
         }
@@ -2170,7 +2203,7 @@ implements Runnable {
         this.car.velocity.v[2] = (float)((double)this.car.velocity.v[2] - Math.cos((double)this.car.rotation.v[1] * Math.PI / 180.0) * (double)this.car.speed);
         this.car.position.v[0] = this.car.position.v[0] + this.car.velocity.v[0] * f5;
         this.car.position.v[2] = this.car.position.v[2] + this.car.velocity.v[2] * f5;
-        if (this.race.mode == 3 && this.ghostRecorder != null && !this.raceFinished) {
+        if (this.ghostOn() && this.ghostRecorder != null && !this.raceFinished) {
             this.ghostRecorder.recordPose(this.ghostMs(), this.car, false);
         }
         this.computeCorners(this.car.wheelPositions, this.car.bodyCorners, this.car.position, this.car.rotation);
@@ -2179,7 +2212,10 @@ implements Runnable {
         this.addSegments(this.carMask, this.car.bodyCorners[2]);
         this.addSegments(this.carMask, this.car.bodyCorners[3]);
         this.car.segmentIndex = this.firstSegment(this.carMask, this.car.position, this.car.position.v[1], this.car.segmentIndex);
-        this.resolveCollisions(this.carMask);
+        int wallHit = this.resolveCollisions(this.carMask);
+        if (wallHit > 0 && this.saveData.vibrationOff == 0 && rally3d.desktop.Platform.supportsVibration()) {
+            this.impactVibrate(this.lastCollisionDepth / Math.max(0.05f, f5), f4);
+        }
         this.updateWheels(f5);
         if (!this.raceFinished) {
             this.updateCamera(8.0f);
@@ -2229,7 +2265,7 @@ implements Runnable {
             ++this.race.checkpointsPassed;
             if (this.race.checkpointsPassed >= 4) {
                 this.sound.play(4);
-                if (this.race.mode == 3 && this.ghostRecorder != null) {
+                if (this.ghostOn() && this.ghostRecorder != null) {
                     this.ghostFinishMs = this.ghostMs();
                     this.ghostRecorder.recordPose(this.ghostFinishMs, this.car, true);
                 }
@@ -2482,7 +2518,7 @@ implements Runnable {
      } finally { rally3d.core.Trace.out(353, $t); } }
     Vec3 watchedPos() { RemoteCar rc = this.watchedExtra(); return rc != null ? rc.pos : this.opponentPosition; }
     Vec3 watchedRot() { RemoteCar rc = this.watchedExtra(); return rc != null ? rc.rot : this.opponentRotation; }
-    String watchedName() { /*T*/ final long $t = rally3d.core.Trace.in(354); try { RemoteCar rc = this.watchedExtra(); return rc != null ? rc.name : (this.opponentName == null ? "Player 2" : this.opponentName);  } finally { rally3d.core.Trace.out(354, $t); } }
+    String watchedName() { /*T*/ final long $t = rally3d.core.Trace.in(354); try { RemoteCar rc = this.watchedExtra(); return rc != null ? rc.name : (this.opponentName == null ? rally3d.core.Lang.t("Player 2") : this.opponentName);  } finally { rally3d.core.Trace.out(354, $t); } }
     boolean allFinished() { /*T*/ final long $t = rally3d.core.Trace.in(355); try {
         if (this.opponentFinishTime < 0) return false;
         for (RemoteCar rc : this.extras.values()) if (rc.seen && rc.finishTime < 0) return false;
@@ -2588,7 +2624,7 @@ implements Runnable {
             if (this.mpSpectateLeaveArmed != 0L && nowNs - this.mpSpectateLeaveArmed < 2_000_000_000L) return -1;
             this.mpSpectateLeaveArmed = nowNs;
         }
-        if (this.mpSpectateLeaveArmed != 0L && nowNs - this.mpSpectateLeaveArmed < 2_000_000_000L) this.bannerText2 = "Press pause again to leave";
+        if (this.mpSpectateLeaveArmed != 0L && nowNs - this.mpSpectateLeaveArmed < 2_000_000_000L) this.bannerText2 = rally3d.core.Lang.t("Press pause again to leave");
         return 0;
      } finally { rally3d.core.Trace.out(257, $t); } }
 
@@ -2714,7 +2750,7 @@ implements Runnable {
         int n;
         this.introMode = true;
         if (this.race.mode == 1 || this.race.mode == 3) {
-            if (this.race.mode == 3) this.infoTitle = "Ghost Race";
+            if (this.race.mode == 3) this.infoTitle = rally3d.core.Lang.t("Ghost Race");
             else this.infoTitle = Texts.timeTrial;
             this.infoSubtitle = Texts.highScores;
             this.infoRows = 5;
@@ -2733,7 +2769,7 @@ implements Runnable {
             this.infoRows = 5;
             for (n = 0; n < 4; ++n) {
                 this.infoNames[n] = Texts.playerNames[n];
-                this.infoTimes[n] = this.saveData.defaultTime(this.race.trackIndex, n);
+                this.infoTimes[n] = this.refTime(this.race.trackIndex, n);
             }
             this.infoNames[4] = this.saveData.playerName;
             this.infoTimes[4] = -1;
@@ -2746,7 +2782,7 @@ implements Runnable {
             this.infoNames[1] = this.opponentName;
             this.infoTimes[1] = -1;
         }
-        this.targetTime = this.race.mode == 3
+        this.targetTime = this.ghostOn() && this.ghostPlayback != null || this.race.mode == 3
                 ? (this.ghostPlayback != null ? this.ghostPlayback.finishTime : -1)
                 : this.infoTimes[0];
         this.menuSlide = 0;
@@ -2778,11 +2814,15 @@ implements Runnable {
         this.race.mode = 1;
         this.showRaceIntro(false);
         this.insertScore();
-        for (int i = 0; i < 5; ++i) {
-            this.saveData.bestNames[i][this.race.trackIndex] = this.infoNames[i];
-            this.saveData.bestTimes[i][this.race.trackIndex] = this.infoTimes[i];
+        if (MapLibrary.isCustom(this.race.trackIndex)) {
+            MapLibrary.setBest(this.race.trackIndex, this.infoNames, this.infoTimes);
+        } else {
+            for (int i = 0; i < 5; ++i) {
+                this.saveData.bestNames[i][this.race.trackIndex] = this.infoNames[i];
+                this.saveData.bestTimes[i][this.race.trackIndex] = this.infoTimes[i];
+            }
+            this.saveData.save();
         }
-        this.saveData.save();
         this.race.mode = 0;
      } finally { rally3d.core.Trace.out(53, $t); } }
 
@@ -2816,8 +2856,8 @@ implements Runnable {
                 // all finished players (me, primary opponent, extras), best time first; the table holds 5 rows
                 final java.util.ArrayList<Object[]> res = new java.util.ArrayList<Object[]>();
                 res.add(new Object[]{this.saveData.playerName, Integer.valueOf(this.race.raceTime), Boolean.TRUE});
-                res.add(new Object[]{this.opponentName == null ? "Player 2" : this.opponentName, Integer.valueOf(this.opponentFinishTime), Boolean.FALSE});
-                for (RemoteCar rc : this.extras.values()) if (rc.finishTime >= 0) res.add(new Object[]{rc.name == null ? "Player " + (rc.id + 1) : rc.name, Integer.valueOf(rc.finishTime), Boolean.FALSE});
+                res.add(new Object[]{this.opponentName == null ? rally3d.core.Lang.t("Player 2") : this.opponentName, Integer.valueOf(this.opponentFinishTime), Boolean.FALSE});
+                for (RemoteCar rc : this.extras.values()) if (rc.finishTime >= 0) res.add(new Object[]{rc.name == null ? rally3d.core.Lang.t("Player ") + (rc.id + 1) : rc.name, Integer.valueOf(rc.finishTime), Boolean.FALSE});
                 java.util.Collections.sort(res, new java.util.Comparator<Object[]>() {   // stable: on a tie I stay first
                     public int compare(Object[] x, Object[] y) { return ((Integer)x[1]).intValue() - ((Integer)y[1]).intValue(); }
                 });
@@ -2866,16 +2906,35 @@ implements Runnable {
         return n;
      } finally { rally3d.core.Trace.out(55, $t); } }
 
+    /** Championship opponent time (0.1 s) number i (0 = fastest) on a stock track or a custom map. */
+    int refTime(int track, int i) { /*T*/ final long $t = rally3d.core.Trace.in(731); try {
+        if (MapLibrary.isCustom(track)) return MapLibrary.parTimes(MapLibrary.byId(track), this.segmentCount)[i];
+        return this.saveData.defaultTime(track, i);
+     } finally { rally3d.core.Trace.out(731, $t); } }
+
     private int campaignPlaceForTime(int track, int time) { /*T*/ final long $t = rally3d.core.Trace.in(56); try {
         int place = 0;
         for (int i = 0; i < 4; i++) {
-            if (time >= this.saveData.defaultTime(track, i)) place++;
+            if (time >= this.refTime(track, i)) place++;
         }
         return place;
      } finally { rally3d.core.Trace.out(56, $t); } }
 
     private void saveTrackHighScore() { /*T*/ final long $t = rally3d.core.Trace.in(57); try {
         int track = this.race.trackIndex;
+        if (MapLibrary.isCustom(track)) {   // custom map: its own top-5 table (maprecords.txt)
+            if (this.race.raceTime < 0) return;
+            String[] cn = MapLibrary.bestNames(track).clone();
+            int[] ct = MapLibrary.bestTimes(track).clone();
+            int at = -1;
+            for (int i = 0; i < 5; i++) if (ct[i] < 0 || this.race.raceTime < ct[i]) { at = i; break; }
+            if (at < 0) return;
+            for (int i = 4; i > at; i--) { ct[i] = ct[i - 1]; cn[i] = cn[i - 1]; }
+            ct[at] = this.race.raceTime;
+            cn[at] = this.saveData.playerName;
+            MapLibrary.setBest(track, cn, ct);
+            return;
+        }
         if (track < 0 || track >= 12 || this.race.raceTime < 0) return;
         int insert = -1;
         for (int i = 0; i < 5; i++) {
@@ -2898,6 +2957,11 @@ implements Runnable {
         if (n2 > 2) {
             return;
         }
+        if (MapLibrary.isCustom(n)) {   // custom maps are never locked and unlock nothing: they only keep their own medal
+            MapLibrary.setMedal(n, n2);
+            return;
+        }
+        if (n < 0 || n >= 12) return;
         if (this.saveData.trackMedals[n] <= n2) {
             return;
         }
@@ -2956,14 +3020,33 @@ implements Runnable {
         return n2;
      } finally { rally3d.core.Trace.out(61, $t); } }
 
+    /** Championship: race with a ghost (record the run, optionally race a recorded ghost). Switched in the track menu. */
+    boolean championshipGhost;
+    static final int TOGGLE_GHOST = 99999;
+
+    /** Ghost recording / playback is active in Ghost Race and in a Championship race with the ghost switch on. */
+    boolean ghostOn() { return this.race.mode == 3 || (this.race.mode == 0 && this.championshipGhost); }
+
     int trackMenu(int n, boolean bl) { /*T*/ final long $t = rally3d.core.Trace.in(62); try {
+        int forced = -1;
+        while (true) {
+            int r = this.trackMenuOnce(n, bl, forced);
+            if (r != TOGGLE_GHOST) return r;
+            this.championshipGhost = !this.championshipGhost;
+            rally3d.core.RLog.i("ghost", "Championship ghost " + (this.championshipGhost ? "ON" : "OFF"));
+            forced = TOGGLE_GHOST;
+        }
+     } finally { rally3d.core.Trace.out(62, $t); } }
+
+    private int trackMenuOnce(int n, boolean bl, int forced) { /*T*/ final long $t = rally3d.core.Trace.in(62); try {
         if (bl) {
             n = this.lastUnlockedTrack();
         }
         this.beginMenu(Texts.selectTrack);
-        if (this.race.mode != 0) {   // custom maps (add-ons) come first; the championship is stock-only
-            java.util.List<AddonPack> maps = MapLibrary.menuMaps();
-            for (AddonPack mp : maps) this.addIconMenuItem(mp.name, null, MapLibrary.idOf(mp), false);
+        if (this.race.mode == 0) this.addMenuItem(rally3d.core.Lang.t("Ghost: ") + (this.championshipGhost ? rally3d.core.Lang.t("ON") : rally3d.core.Lang.t("OFF")), TOGGLE_GHOST);
+        java.util.List<AddonPack> maps = MapLibrary.menuMaps();
+        if (this.race.mode != 0) {   // custom maps (add-ons) come first; in the Championship they follow the stock tracks
+            for (AddonPack mp : maps) this.addIconMenuItem(mp.name, bl ? this.cupImages[MapLibrary.medalOf(MapLibrary.idOf(mp))] : null, MapLibrary.idOf(mp), false);
             if (!maps.isEmpty() && !bl) n = MapLibrary.idOf(maps.get(0));
         }
         for (int i = 0; i < 12; ++i) {
@@ -2974,7 +3057,10 @@ implements Runnable {
             }
             this.addIconMenuItem(Texts.trackNames[i], null, i, this.saveData.trackMedals[i] > 3);
         }
-        return this.runMenu(n);
+        if (this.race.mode == 0) {   // Championship: enabled custom maps after the 12 stock tracks, always unlocked, own medals
+            for (AddonPack mp : maps) this.addIconMenuItem(mp.name, this.cupImages[MapLibrary.medalOf(MapLibrary.idOf(mp))], MapLibrary.idOf(mp), false);
+        }
+        return this.runMenu(forced >= 0 ? forced : n);
      } finally { rally3d.core.Trace.out(62, $t); } }
 
     int carMenu(boolean bl) { /*T*/ final long $t = rally3d.core.Trace.in(63); try {
@@ -3000,7 +3086,7 @@ implements Runnable {
 
     boolean syncStart() { /*T*/ final long $t = rally3d.core.Trace.in(64); try {
         int previousScreen = this.screenMode;
-        this.beginMenu("Multiplayer Lobby");
+        this.beginMenu(rally3d.core.Lang.t("Multiplayer Lobby"));
         this.addMenuItem("", 0);
         this.showLeftSoftkey = false;
         this.showRightSoftkey = false;
@@ -3132,13 +3218,13 @@ implements Runnable {
             if (localState != previousLocal || remoteState != previousRemote || seconds != previousSeconds
                     || lobbyReady != previousLobbyReady || lobbyTotal != previousLobbyTotal) {
                 String others = this.isHost
-                        ? "Players ready: " + lobbyReady + " / " + lobbyTotal
-                        : "Players ready: " + lobbyReady + " / " + Math.max(1, lobbyTotal);
+                        ? rally3d.core.Lang.t("Players ready: ") + lobbyReady + " / " + lobbyTotal
+                        : rally3d.core.Lang.t("Players ready: ") + lobbyReady + " / " + Math.max(1, lobbyTotal);
                 boolean alone = this.isHost && this.bluetooth.connectedPeerCount() < 1;
-                String status = (localReady ? "You: READY" : "You: press SPACE or tap to get ready")
+                String status = (localReady ? rally3d.core.Lang.t("You: READY") : rally3d.core.Lang.t("You: press SPACE or tap to get ready"))
                         + "|" + others
-                        + (startReceived ? "|Race starts in " + seconds + "..."
-                        : alone ? "|Waiting for another player to join..." : "|The race starts when everyone is ready");
+                        + (startReceived ? rally3d.core.Lang.t("|Race starts in ") + seconds + "..."
+                        : alone ? rally3d.core.Lang.t("|Waiting for another player to join...") : rally3d.core.Lang.t("|The race starts when everyone is ready"));
                 this.layoutText(2, this.barHeight + 2, this.width - 5, this.height - this.barHeight - 3, status, true);
                 previousLocal = localState;
                 previousRemote = remoteState;
@@ -3324,13 +3410,14 @@ implements Runnable {
             }
             case 1: {
                 this.racing = false;
+                if (this.race.mode == 0 && this.championshipGhost) this.finishGhostRecord();
                 if (this.race.mode == 3) {
                     this.finishGhostRecord();
                     this.saveTrackHighScore();
                     this.updateMedals(this.race.trackIndex, this.campaignPlaceForTime(this.race.trackIndex, this.race.raceTime));
-                    this.showMessage("Ghost Race", this.ghostRecordBeaten
-                            ? "New track ghost saved: " + this.formatTime(this.race.raceTime)
-                            : (this.ghostPlayback == null ? "Ghost recording saved: " : "Finish time: ") + this.formatTime(this.race.raceTime));
+                    this.showMessage(rally3d.core.Lang.t("Ghost Race"), this.ghostRecordBeaten
+                            ? rally3d.core.Lang.t("New track ghost saved: ") + this.formatTime(this.race.raceTime)
+                            : (this.ghostPlayback == null ? rally3d.core.Lang.t("Ghost recording saved: ") : rally3d.core.Lang.t("Finish time: ")) + this.formatTime(this.race.raceTime));
                     return 1;
                 }
                 this.renderFrame();
@@ -3348,6 +3435,8 @@ implements Runnable {
         this.car.copyFrom(this.saveData.savedCars[n]);
         this.cameraState.copyFrom(this.saveData.savedCameras[n]);
         this.race.copyFrom(this.saveData.savedRaces[n]);
+        this.ghostRecorder = null;   // a resumed race has no ghost
+        this.ghostPlayback = null;
         this.loadScreen(3, this.race.trackIndex);
         this.prepareRace(true);
         this.showRaceIntro(false);
@@ -3381,12 +3470,12 @@ implements Runnable {
                             return 1;
                         }
                     }
-                    if (this.race.mode == 3) { this.ghostPlayback = null; this.ghostRecordBeaten = false; }
+                    if (this.ghostOn()) { this.ghostPlayback = null; this.ghostRecordBeaten = false; }
                     boolean pickAgain;
                     do {
                         pickAgain = false;
                         this.race.carIndex = this.carMenu(true);
-                        if (this.race.mode == 3 && this.race.carIndex != -1) {
+                        if (this.ghostOn() && this.race.carIndex != -1) {
                             // records are per track+car, but any car's ghost can be raced with any car
                             int choice = this.chooseGhost(this.race.trackIndex, this.race.carIndex);
                             if (choice == -2) pickAgain = true;   // back from the ghost menu -> car menu
@@ -3427,10 +3516,10 @@ implements Runnable {
                 this.paused = false;
                 this.setTargetFps(this.initialFps());
                 this.startTimeOffset = (int)(this.currentTime() / 100L);
-                if (this.race.mode == 3) {
+                if (this.ghostOn()) {
                     this.ghostRecorder = new GhostReplay();
-                    this.ghostRecorder.carIndex = this.race.carIndex;
-                    this.ghostRunStartTime = 0;
+                    this.ghostRecorder.carKey = this.ghostKeyOf(this.race.carIndex);
+                    this.ghostRecorder.carName = this.carDef(this.race.carIndex).name;
                     this.ghostFinishMs = 0;
                 }
             }
@@ -3506,14 +3595,25 @@ implements Runnable {
         this.drawRect(g, left - 1, top - 1, right - left + 1, bottom - top + 1);
         g.setFont(font);
         String[] names = {"ALL", "WARN+ERR", "ERR"};
-        this.drawText(g, left + 3, top + 2, "LOG [" + names[rally3d.core.LogView.filter] + "]  top: filter  |  scroll: wheel / drag  (F1)", -86, 1);
+        int headH = rally3d.core.LogView.headerH(h, fh);
+        if (rally3d.core.LogView.exportButton) {
+            String head = rally3d.core.Lang.t("LOG [") + names[rally3d.core.LogView.filter] + rally3d.core.Lang.t("]  top: filter | drag: scroll");
+            rally3d.core.LogView.exportRect(w, h, r);
+            int maxHead = r[0] - left - 8;
+            while (head.length() > 4 && font.stringWidth(head) > maxHead) head = head.substring(0, head.length() - 1);
+            this.drawText(g, left + 3, top + (headH - this.fontSmallHeight) / 2, head, -86, 1);
+            this.drawLogButton(g, r, rally3d.core.Lang.t("EXPORT"), false);
+            g.setFont(font);
+        } else {
+            this.drawText(g, left + 3, top + 2, rally3d.core.Lang.t("LOG [") + names[rally3d.core.LogView.filter] + rally3d.core.Lang.t("]  top: filter  |  scroll: wheel / drag  (F1)"), -86, 1);
+        }
         int count = rally3d.core.RLog.count();
         int textWidth = right - left - 6;
         if (count != logCacheCount || rally3d.core.LogView.filter != logCacheFilter || textWidth != logCacheWidth) {
             this.rebuildLogRows(font, textWidth);
             logCacheCount = count; logCacheFilter = rally3d.core.LogView.filter; logCacheWidth = textWidth;
         }
-        int bodyTop = top + fh + 4;
+        int bodyTop = top + headH;
         int maxRows = Math.max(1, (bottom - bodyTop - 2) / fh);
         int maxScroll = Math.max(0, logRows.size() - maxRows);
         if (rally3d.core.LogView.scroll > maxScroll) rally3d.core.LogView.scroll = maxScroll;
@@ -3670,6 +3770,10 @@ implements Runnable {
                 }
                 if (this.mapEditor != null) {
                     this.mapEditor.draw(graphics);
+                    break block36;
+                }
+                if (this.carEditor != null) {
+                    this.carEditor.draw(graphics);
                     break block36;
                 }
                 if (this.showCarPreview != 0) {
@@ -4192,9 +4296,9 @@ implements Runnable {
         this.textTop = n2;
         this.textRight = n3;
         this.textBottom = n4;
-        this.textLines = new String[128];
-        this.lineWidths = new int[128];
-        this.lineLengths = new int[128];
+        this.textLines = new String[2048];   // long help texts (Instructions) need far more than the original 128 lines
+        this.lineWidths = new int[2048];
+        this.lineLengths = new int[2048];
         int n6 = this.textRight - this.textLeft;
         this.visibleTextLines = (this.textBottom - this.textTop) / this.fontBoldHeight;
         this.totalTextLines = 0;
@@ -4235,7 +4339,7 @@ implements Runnable {
                 int n6 = this.fontBold.stringWidth(string2);
                 if (n6 <= n) {
                     if (c == '\u0000' || c == '|' || c == '\n') {
-                        if (this.totalTextLines < 128) {
+                        if (this.totalTextLines < this.textLines.length) {
                             this.textLines[this.totalTextLines] = string.substring(0, n2);
                             this.lineLengths[this.totalTextLines] = n2;
                             this.lineWidths[this.totalTextLines] = n6;
@@ -4259,10 +4363,12 @@ implements Runnable {
                         } while (n4 > n);
                     }
                     n5 = 1;
-                    this.textLines[this.totalTextLines] = string.substring(0, n3);
-                    this.lineLengths[this.totalTextLines] = n3;
-                    this.lineWidths[this.totalTextLines] = n4;
-                    ++this.totalTextLines;
+                    if (this.totalTextLines < this.textLines.length) {
+                        this.textLines[this.totalTextLines] = string.substring(0, n3);
+                        this.lineLengths[this.totalTextLines] = n3;
+                        this.lineWidths[this.totalTextLines] = n4;
+                        ++this.totalTextLines;
+                    }
                     return n3 + 1 - n5;
                 }
             }
@@ -4370,7 +4476,7 @@ implements Runnable {
             }
             String directAddress = null;
             if (action == 5) {
-                String typed = this.editTextInGame("Join by IP", "Host IP: ", this.lastLanAddress, 40);
+                String typed = this.editTextInGame(rally3d.core.Lang.t("Join by IP"), rally3d.core.Lang.t("Host IP: "), this.lastLanAddress, 40);
                 if (typed == null || typed.trim().length() == 0) continue;
                 directAddress = typed.trim();
                 this.lastLanAddress = directAddress;
@@ -4398,7 +4504,7 @@ implements Runnable {
                     && System.currentTimeMillis() < deadline) this.renderFrame();
             if (!this.bluetooth.adapterAvailable) {
                 rally3d.core.RLog.e("mp", "host start failed: adapterAvailable=false hostDone=" + this.bluetooth.hostDone);
-                this.showTextScreen("LAN", "Could not create a local game. Check firewall and network permissions.", 0L, 1);
+                this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Could not create a local game. Check firewall and network permissions."), 0L, 1);
                 return -1;
             }
         } else {
@@ -4408,7 +4514,7 @@ implements Runnable {
                 while (!this.bluetooth.isInquiryDone() && System.currentTimeMillis() < resolveDeadline) this.renderFrame();
                 if (!this.bluetooth.hasDevices()) {
                     rally3d.core.RLog.e("mp", "direct address invalid: " + this.bluetooth.connectError);
-                    this.showTextScreen("LAN", "Invalid or unknown host address.", 0L, 1);
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Invalid or unknown host address."), 0L, 1);
                     return -1;
                 }
                 n = 0;
@@ -4416,9 +4522,9 @@ implements Runnable {
                 if (this.waitScreen(Texts.searchingDevices, 2) == -1) {
                     rally3d.core.RLog.e("mp", "no host: adapterAvailable=" + this.bluetooth.adapterAvailable + " devices=" + this.bluetooth.deviceCount);
                     if (!this.bluetooth.adapterAvailable) {
-                        this.showTextScreen("LAN", "Local network discovery failed. Check firewall permissions. You can still use Join by IP address.", 0L, 1);
+                        this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Local network discovery failed. Check firewall permissions. You can still use Join by IP address."), 0L, 1);
                     } else if (this.bluetooth.deviceCount == 0) {
-                        this.showTextScreen("LAN", "No local games found. Make sure both devices are on the same Wi-Fi/LAN (no VPN, no guest Wi-Fi/AP isolation) and the host is in the lobby, or use Join by IP address (the host's 192.168.x.x shown in its lobby).", 0L, 1);
+                        this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("No local games found. Make sure both devices are on the same Wi-Fi/LAN (no VPN, no guest Wi-Fi/AP isolation) and the host is in the lobby, or use Join by IP address (the host's 192.168.x.x shown in its lobby)."), 0L, 1);
                     }
                     return -1;
                 }
@@ -4431,8 +4537,8 @@ implements Runnable {
             // with an empty password the moment the server was selected.
             this.bluetooth.chooseDevice(n);
             if (this.bluetooth.hasDirectTarget() || this.bluetooth.selectedServerNeedsPassword()) {
-                String password = this.editTextInGame("Join LAN game",
-                        this.bluetooth.hasDirectTarget() ? "Password (empty if none): " : "Server password: ", "", 24);
+                String password = this.editTextInGame(rally3d.core.Lang.t("Join LAN game"),
+                        this.bluetooth.hasDirectTarget() ? rally3d.core.Lang.t("Password (empty if none): ") : rally3d.core.Lang.t("Server password: "), "", 24);
                 if (password == null) return -1;
                 this.bluetooth.setJoinPassword(password);
             }
@@ -4440,17 +4546,17 @@ implements Runnable {
             if (this.waitScreen(Texts.waitingForConnection, 3) == -1) {
                 rally3d.core.RLog.e("mp", "join failed: rejected=" + this.bluetooth.joinRejected + " reason=" + this.bluetooth.joinRejectReason + " error=" + this.bluetooth.connectError);
                 if (this.bluetooth.joinRejected && this.bluetooth.joinRejectReason == 1) {
-                    this.showTextScreen("LAN", "Nickname is taken. Change it.", 0L, 1);
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Nickname is taken. Change it."), 0L, 1);
                 } else if (this.bluetooth.joinRejected && this.bluetooth.joinRejectReason == 2) {
-                    this.showTextScreen("LAN", "Server is full.", 0L, 1);
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Server is full."), 0L, 1);
                 } else if (this.bluetooth.joinRejected && this.bluetooth.joinRejectReason == 4) {
-                    this.showTextScreen("LAN", "Different game version. You: v" + rally3d.core.Version.NAME + ", host: v" + this.bluetooth.remoteVersion + ". Everyone must play the same version.", 0L, 1);
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Different game version. You: v") + rally3d.core.Version.NAME + rally3d.core.Lang.t(", host: v") + this.bluetooth.remoteVersion + rally3d.core.Lang.t(". Everyone must play the same version."), 0L, 1);
                 } else if (this.bluetooth.joinRejected && this.bluetooth.joinRejectReason == 3) {
-                    this.showTextScreen("LAN", "Incorrect password.", 0L, 1);
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Incorrect password."), 0L, 1);
                 } else {
-                    this.showTextScreen("LAN", "Could not connect to the host"
+                    this.showTextScreen(rally3d.core.Lang.t("LAN"), rally3d.core.Lang.t("Could not connect to the host")
                             + (this.bluetooth.connectError != null ? " (" + this.bluetooth.connectError + ")" : "")
-                            + ". Check the IP, that the host is in the lobby and that TCP port " + TheBluetooth.TCP_PORT + " is allowed in the firewall. From a phone use the host's Wi-Fi/LAN IP (192.168.x.x), not a VPN address (26.x Radmin, 25.x Hamachi) - unless the phone is in the same VPN.", 0L, 1);
+                            + rally3d.core.Lang.t(". Check the IP, that the host is in the lobby and that TCP port ") + TheBluetooth.TCP_PORT + rally3d.core.Lang.t(" is allowed in the firewall. From a phone use the host's Wi-Fi/LAN IP (192.168.x.x), not a VPN address (26.x Radmin, 25.x Hamachi) - unless the phone is in the same VPN."), 0L, 1);
                 }
                 return -1;
             }
@@ -4494,7 +4600,7 @@ implements Runnable {
         this.bluetooth.beginRound();
         int previousScreen = this.screenMode;
         this.loadScreen(2, 0);
-        this.beginMenu("Multiplayer Lobby");
+        this.beginMenu(rally3d.core.Lang.t("Multiplayer Lobby"));
         this.addMenuItem("", 0);
         this.showLeftSoftkey = false;
         this.showRightSoftkey = true;
@@ -4514,9 +4620,9 @@ implements Runnable {
         java.util.List<String> addresses = TheBluetooth.localAddresses();
         String ip = "";
         if (!addresses.isEmpty()) {   // LAN addresses are sorted first; VPN (Radmin 26.x, Hamachi 25.x) ones are listed after
-            StringBuilder ipText = new StringBuilder("Your IP: ").append(addresses.get(0)).append(":").append(TheBluetooth.TCP_PORT);
+            StringBuilder ipText = new StringBuilder(rally3d.core.Lang.t("Your IP: ")).append(addresses.get(0)).append(":").append(TheBluetooth.TCP_PORT);
             if (addresses.size() > 1) {
-                ipText.append("  (also ");
+                ipText.append(rally3d.core.Lang.t("  (also "));
                 for (int ai = 1; ai < Math.min(3, addresses.size()); ai++) { if (ai > 1) ipText.append(", "); ipText.append(addresses.get(ai)); }
                 ipText.append(")");
             }
@@ -4542,9 +4648,9 @@ implements Runnable {
                 if (names.length() > 0) names.append(", ");
                 names.append(name);
             }
-            String status = "Players: " + players + " / " + max
+            String status = rally3d.core.Lang.t("Players: ") + players + " / " + max
                     + "|" + names
-                    + "|" + (players >= 2 ? "Press ENTER or tap to start without waiting" : "Waiting for players to join...")
+                    + "|" + (players >= 2 ? rally3d.core.Lang.t("Press ENTER or tap to start without waiting") : rally3d.core.Lang.t("Waiting for players to join..."))
                     + (ip.length() > 0 ? "|" + ip : "");
             if (!status.equals(lastStatus)) {
                 this.layoutText(2, this.barHeight + 2, this.width - 5, this.height - this.barHeight - 3, status, true);
@@ -4557,7 +4663,7 @@ implements Runnable {
 
     int multiplayerTrackSelect() { /*T*/ final long $t = rally3d.core.Trace.in(94); try {
         if (!this.isHost) {
-            return this.waitScreen("Waiting for the host to choose a track...", 4);
+            return this.waitScreen(rally3d.core.Lang.t("Waiting for the host to choose a track..."), 4);
         }
         return this.trackMenu(0, false);
      } finally { rally3d.core.Trace.out(94, $t); } }
@@ -4576,7 +4682,7 @@ implements Runnable {
         this.bluetooth.mapAcks.clear();
         this.bluetooth.setTrackChoice(this.race.trackIndex);
         // keep offering the map until every guest confirmed it (or 90 s / Back)
-        this.beginMenu("Multiplayer Lobby");
+        this.beginMenu(rally3d.core.Lang.t("Multiplayer Lobby"));
         this.addMenuItem("", 0);
         this.showLeftSoftkey = false; this.showRightSoftkey = false;
         this.showTextBlock = 1; this.showTitleBackground = 0; this.showArrows = false;
@@ -4591,7 +4697,7 @@ implements Runnable {
             int guests = this.bluetooth.guestCount(), got = this.bluetooth.mapAcks.size();
             if (guests <= 0 || got >= guests) break;
             if (now >= nextOffer) { sync.sendOffer(); nextOffer = now + 500L; }
-            if (now - lastUi > 150L) { lastUi = now; this.showAddonStatus("Sending the map '" + mp.name + "' to the players... " + got + "/" + guests + "|" + (mp.zip.length / 1024) + " KB"); }
+            if (now - lastUi > 150L) { lastUi = now; this.showAddonStatus(rally3d.core.Lang.t("Sending the map '") + mp.name + rally3d.core.Lang.t("' to the players... ") + got + "/" + guests + "|" + (mp.zip.length / 1024) + rally3d.core.Lang.t(" KB")); }
             if ((this.pollNewKeys() & 0x200) != 0) { ok = false; break; }
             if (this.bluetooth.linkLost()) { ok = false; break; }
             this.sleep(15);
@@ -4605,7 +4711,7 @@ implements Runnable {
         AddonSync sync = this.bluetooth.addon;
         sync.setRole(false, this.myPlayerId());
         final AddonSync.Remote r = sync.remote(0, AddonSync.SLOT_MAP);
-        this.beginMenu("Multiplayer Lobby");
+        this.beginMenu(rally3d.core.Lang.t("Multiplayer Lobby"));
         this.addMenuItem("", 0);
         this.showLeftSoftkey = false; this.showRightSoftkey = false;
         this.showTextBlock = 1; this.showTitleBackground = 0; this.showArrows = false;
@@ -4620,7 +4726,7 @@ implements Runnable {
             if (now - lastUi > 150L) {
                 lastUi = now;
                 int pct = r.size > 0 ? (int) ((long) r.got * 100L / r.size) : 0;
-                this.showAddonStatus("Downloading the host's map... " + pct + "%|" + (r.size / 1024) + " KB");
+                this.showAddonStatus(rally3d.core.Lang.t("Downloading the host's map... ") + pct + "%|" + (r.size / 1024) + rally3d.core.Lang.t(" KB"));
             }
             if ((this.pollNewKeys() & 0x200) != 0) break;
             if (this.bluetooth.linkLost()) break;
@@ -4630,7 +4736,7 @@ implements Runnable {
         AddonPack mp = r.complete && r.pack != null ? AddonPack.parse(r.pack, null) : null;
         if (mp == null || mp.error != null || !mp.mapOnly) {
             rally3d.core.RLog.e("mp", "could not get the host's map (complete=" + r.complete + ", failed=" + r.failed + (mp != null && mp.error != null ? ", " + mp.error : "") + ")");
-            this.showMessage("Multiplayer", "No map from the host");
+            this.showMessage(rally3d.core.Lang.t("Multiplayer"), rally3d.core.Lang.t("No map from the host"));
             return false;
         }
         int id = MapLibrary.idOf(mp);
@@ -4716,7 +4822,7 @@ implements Runnable {
             } else {
                 this.beginMenu(Texts.championshipTitle);
                 this.addMenuItem(Texts.nextRace, 0);
-                if (this.saveData.hasProgress()) {
+                if (this.saveData.hasProgress() || MapLibrary.hasMedals()) {
                     this.addMenuItem(Texts.resetAll, 1);
                 }
                 n = this.runMenu(n);
@@ -4731,6 +4837,7 @@ implements Runnable {
                 case 1: {
                     if (!this.confirm(Texts.resetAllTitle)) break;
                     this.saveData.resetProgress();
+                    MapLibrary.resetMedals();
                     this.saveData.save();
                     this.showTextScreen(Texts.resetAllTitle, Texts.resetConfirmed, 0L, 1);
                     return -1;
@@ -4753,19 +4860,19 @@ implements Runnable {
 
     int roleMenu() { /*T*/ final long $t = rally3d.core.Trace.in(97); try {
         this.beginMenu(Texts.multiplayerTitle);
-        this.addTextFieldMenuItem("Player name: ", this.saveData.playerName, 2, 16);
-        this.addMenuItem("Maximum players: " + this.maxPlayers, 3);
-        this.addTextFieldMenuItem("Server password: ", this.multiplayerPassword, 4, 24);
-        this.addMenuItem("Create LAN game", 0);
-        this.addMenuItem("Join LAN game", 1);
-        this.addMenuItem("Join by IP address", 5);
+        this.addTextFieldMenuItem(rally3d.core.Lang.t("Player name: "), this.saveData.playerName, 2, 16);
+        this.addMenuItem(rally3d.core.Lang.t("Maximum players: ") + this.maxPlayers, 3);
+        this.addTextFieldMenuItem(rally3d.core.Lang.t("Server password: "), this.multiplayerPassword, 4, 24);
+        this.addMenuItem(rally3d.core.Lang.t("Create LAN game"), 0);
+        this.addMenuItem(rally3d.core.Lang.t("Join LAN game"), 1);
+        this.addMenuItem(rally3d.core.Lang.t("Join by IP address"), 5);
         return this.runMenu(0);
      } finally { rally3d.core.Trace.out(97, $t); } }
 
     int maxPlayersMenu() { /*T*/ final long $t = rally3d.core.Trace.in(98); try {
-        this.beginMenu("Maximum Players");
+        this.beginMenu(rally3d.core.Lang.t("Maximum Players"));
         for (int count = 2; count <= TheBluetooth.MAX_PLAYERS; count++) {
-            this.addMenuItem(count + " players", count);
+            this.addMenuItem(count + rally3d.core.Lang.t(" players"), count);
         }
         return this.runMenu(this.maxPlayers - 2);
      } finally { rally3d.core.Trace.out(98, $t); } }
@@ -4780,7 +4887,7 @@ implements Runnable {
                 this.beginMenu(Texts.newGameTitle);
                 this.addMenuItem(Texts.championship, 0);
                 this.addMenuItem(Texts.timeTrial, 1);
-                if (!rally3d.desktop.Platform.isVanillaMode()) this.addMenuItem("Ghost Race", 2);
+                this.addMenuItem(rally3d.core.Lang.t("Ghost Race"), 2);
                 n2 = this.runMenu(n2);
             }
             switch (n2) {
@@ -4805,46 +4912,63 @@ implements Runnable {
         }
      } finally { rally3d.core.Trace.out(99, $t); } }
 
-    /** Loads the saved ghost of every car for the track, lets the player pick one (or none). Sets ghostPlayback. -2 = back. */
+    /**
+     * Loads the saved ghost of every car for the track (stock cars, installed add-on cars and ghosts on disk whose car is
+     * no longer installed), lets the player pick one (or none). Works for stock tracks and custom maps. Sets ghostPlayback. -2 = back.
+     */
     private int chooseGhost(int track, int ownCar) { /*T*/ final long $t = rally3d.core.Trace.in(285); try {
-        GhostReplay[] all = new GhostReplay[4];
-        int found = 0;
-        for (int i = 0; i < 4; i++) {
-            GhostReplay g = GhostReplay.decode(rally3d.desktop.Platform.loadGhost(track, i));
-            if (g != null && g.carIndex == i) { all[i] = g; found++; }
+        this.refreshLocalCars();
+        java.util.ArrayList<Integer> keys = new java.util.ArrayList<Integer>();
+        for (int i = 0; i < 4; i++) keys.add(Integer.valueOf(i));
+        for (int i = 4; i < this.localCars.size(); i++) {
+            CarDef d = this.localCars.get(i);
+            if (d != null && d.pack != null) { Integer k = Integer.valueOf(d.pack.carKey()); if (!keys.contains(k)) keys.add(k); }
+        }
+        int[] onDisk = rally3d.desktop.Platform.ghostKeys(track);
+        if (onDisk != null) for (int k : onDisk) { Integer o = Integer.valueOf(k); if (k >= 0 && !keys.contains(o)) keys.add(o); }
+        java.util.ArrayList<GhostReplay> found = new java.util.ArrayList<GhostReplay>();
+        for (Integer k : keys) {
+            GhostReplay g = GhostReplay.decode(rally3d.desktop.Platform.loadGhost(track, k.intValue()));
+            if (g != null && g.carKey == k.intValue()) found.add(g);
         }
         this.ghostPlayback = null;
         this.ghostRecordBeaten = false;
-        if (found == 0) { rally3d.core.RLog.i("ghost", "track=" + track + ": no ghosts yet"); return -1; }
-        this.beginMenu("Select ghost");
-        int pre = 0, pos = 0, best = -1;
-        for (int i = 0; i < 4; i++) {
-            if (all[i] == null) continue;
-            this.addMenuItem(Texts.carNames[i] + "  " + this.formatTime(all[i].finishTime), i);
-            if (best == -1 || all[i].finishMs < all[best].finishMs) { best = i; pre = pos; }
-            if (i == ownCar) { pre = pos; best = i; }
-            pos++;
+        if (found.isEmpty()) { rally3d.core.RLog.i("ghost", "track=" + track + ": no ghosts yet"); return -1; }
+        this.beginMenu(rally3d.core.Lang.t("Select ghost"));
+        int ownKey = this.ghostKeyOf(ownCar);
+        int pre = 0, best = -1, own = -1;
+        for (int i = 0; i < found.size(); i++) {
+            GhostReplay g = found.get(i);
+            int li = this.localIndexForCarKey(g.carKey);
+            String nm = li >= 0 ? this.carDef(li).name : (g.carName != null && g.carName.length() > 0 ? g.carName : rally3d.core.Lang.t("Car ") + g.carKey) + rally3d.core.Lang.t(" (not installed)");
+            if (g.carKey < 4 && li >= 0 && li < Texts.carNames.length) nm = Texts.carNames[li];
+            this.addMenuItem(nm + "  " + this.formatTime(g.finishTime), i);
+            if (best == -1 || g.finishMs < found.get(best).finishMs) best = i;
+            if (g.carKey == ownKey) own = i;
         }
-        this.addMenuItem("No ghost", 4);
+        pre = own >= 0 ? own : Math.max(0, best);   // preselect the ghost of my own car, otherwise the fastest one
+        this.addMenuItem(rally3d.core.Lang.t("No ghost"), found.size());
         int r = this.runMenu(pre);
         if (r == -1) return -2;
-        if (r >= 0 && r < 4) this.ghostPlayback = all[r];
-        rally3d.core.RLog.i("ghost", "track=" + track + " car=" + ownCar + " ghost=" + (this.ghostPlayback == null ? "none" : "car " + r + " time=" + this.formatTime(this.ghostPlayback.finishTime)));
+        if (r >= 0 && r < found.size()) this.ghostPlayback = found.get(r);
+        rally3d.core.RLog.i("ghost", "track=" + track + " car=" + ownCar + " ghost=" + (this.ghostPlayback == null ? "none" : "carKey " + this.ghostPlayback.carKey + " time=" + this.formatTime(this.ghostPlayback.finishTime)));
         return r;
      } finally { rally3d.core.Trace.out(285, $t); } }
 
     private void finishGhostRecord() { /*T*/ final long $t = rally3d.core.Trace.in(100); try {
-        if (this.race.mode != 3 || this.ghostRecorder == null) return;
+        if (!this.ghostOn() || this.ghostRecorder == null) return;
+        int key = this.ghostKeyOf(this.race.carIndex);
         this.ghostRecorder.finishTime = this.race.raceTime;
         this.ghostRecorder.finishMs = this.ghostFinishMs > 0 ? this.ghostFinishMs : Math.max(this.ghostRecorder.lastTimeMs(), this.race.raceTime * 100);
-        this.ghostRecorder.carIndex = this.race.carIndex;
-        GhostReplay ownRecord = GhostReplay.decode(rally3d.desktop.Platform.loadGhost(this.race.trackIndex, this.race.carIndex));
-        if (ownRecord != null && ownRecord.carIndex != this.race.carIndex) ownRecord = null;
+        this.ghostRecorder.carKey = key;
+        this.ghostRecorder.carName = this.carDef(this.race.carIndex).name;
+        GhostReplay ownRecord = GhostReplay.decode(rally3d.desktop.Platform.loadGhost(this.race.trackIndex, key));
+        if (ownRecord != null && ownRecord.carKey != key) ownRecord = null;
         boolean better = ownRecord == null || this.ghostRecorder.finishMs < ownRecord.finishMs;
-        rally3d.core.RLog.i("ghost", "finish track=" + this.race.trackIndex + " car=" + this.race.carIndex + " ms=" + this.ghostRecorder.finishMs + " record=" + (ownRecord == null ? "none" : String.valueOf(ownRecord.finishMs)) + " better=" + better);
+        rally3d.core.RLog.i("ghost", "finish track=" + this.race.trackIndex + " carKey=" + key + " ms=" + this.ghostRecorder.finishMs + " record=" + (ownRecord == null ? "none" : String.valueOf(ownRecord.finishMs)) + " better=" + better);
         if (better) {
             byte[] replay = this.ghostRecorder.encode();
-            if (replay != null && rally3d.desktop.Platform.saveGhost(this.race.trackIndex, this.race.carIndex, replay)) {
+            if (replay != null && rally3d.desktop.Platform.saveGhost(this.race.trackIndex, key, replay)) {
                 this.ghostRecordBeaten = true;
                 this.ghostPlayback = this.ghostRecorder;
             }
@@ -4860,17 +4984,102 @@ implements Runnable {
      } finally { rally3d.core.Trace.out(286, $t); } }
 
     /** "Map Editor": the in-game track builder (see MapEditor). {@code open} = a map pack to edit, null = new map. */
+    /** "Car Builder": the in-game car / wheels builder (see CarEditor). {@code open} = a pack made with it to edit, null = new car. */
+    void carEditorMenu(AddonPack open) {
+        new CarEditor(this).run(open);
+    }
+
     void mapEditorMenu(AddonPack open) {
         new MapEditor(this).run(open);
         this.refreshLocalCars();
         this.loadScreen(2, 0);
     }
 
+    /** Progress (medals, best times, unlocked cars, ghosts, add-ons, settings) as one zip the player keeps outside the app: survives an uninstall on Android. */
+    private void backupProgress() {
+        try {
+            this.saveData.save();
+            java.io.File ad = rally3d.desktop.Platform.addonsDir();
+            byte[] z = rally3d.core.ProgressBackup.create(rally3d.desktop.Platform.progressDir(), ad, ad == null ? null : ad.getParentFile());
+            String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT).format(new java.util.Date());
+            String saved = rally3d.desktop.Platform.exportFile("rally3d-progress-" + stamp + ".zip", z);
+            this.showMessage(rally3d.core.Lang.t("Backup"), saved != null ? rally3d.core.Lang.t("Saved: ") + saved : rally3d.core.Lang.t("Backup cancelled"));
+        } catch (Throwable t) {
+            rally3d.core.RLog.caught("RallyGame.backupProgress", t);
+            this.showMessage(rally3d.core.Lang.t("Backup"), rally3d.core.Lang.t("Failed: ") + (t.getMessage() == null ? t.toString() : t.getMessage()));
+        }
+    }
+
+    private void restoreProgress() {
+        try {
+            byte[] z = rally3d.desktop.Platform.pickFile(rally3d.core.Lang.t("Rally3D - restore progress backup"));
+            if (z == null) { this.showMessage(rally3d.core.Lang.t("Restore"), rally3d.core.Lang.t("Cancelled")); return; }
+            java.io.File ad = rally3d.desktop.Platform.addonsDir();
+            int n = rally3d.core.ProgressBackup.restore(z, rally3d.desktop.Platform.progressDir(), ad, ad == null ? null : ad.getParentFile());
+            // re-read what was just written, otherwise the old in-memory state would be saved over it on the next save
+            String keepName = this.saveData.playerName;
+            this.saveData = new SaveData(Texts.defaultPlayerName);
+            this.saveData.fontHeightBold = this.fontBoldHeight;
+            this.saveData.fontHeightSmall = this.fontSmallHeight;
+            if (this.saveData.playerName == null || this.saveData.playerName.length() == 0) this.saveData.playerName = keepName;
+            this.sound.setEnabled(this.saveData.soundLevel != 0);
+            this.sound.setVolume(this.saveData.soundLevel * 99 / 3);
+            MapLibrary.reloadFromDisk();
+            AddonManager.rescan();
+            this.refreshLocalCars();
+            rally3d.core.RLog.i("backup", "progress restored: " + n + " files");
+            this.showMessage(rally3d.core.Lang.t("Restore"), n + rally3d.core.Lang.t(" files restored. Restart the game to apply all settings."));
+        } catch (Throwable t) {
+            rally3d.core.RLog.caught("RallyGame.restoreProgress", t);
+            this.showMessage(rally3d.core.Lang.t("Restore"), rally3d.core.Lang.t("Failed: ") + (t.getMessage() == null ? t.toString() : t.getMessage()));
+        }
+    }
+
+    /** Language list (first launch: no way back, Back keeps the highlighted language). Applies, saves and rebuilds all texts at once. */
+    void languageMenu(boolean first) {
+        String[][] langs = rally3d.core.Lang.LANGS;
+        int sel = Math.max(0, rally3d.core.Lang.indexOf(rally3d.core.Lang.code()));
+        this.beginMenu(first ? "Language / \u042f\u0437\u044b\u043a / Sprache" : rally3d.core.Lang.t("Language"));
+        for (int i = 0; i < langs.length; i++) this.addMenuItem(langs[i][1], i);
+        this.menuSlideEnabled = first ? 0 : 1;
+        int n = this.runMenu(sel);
+        if (n < 0) { if (!first) return; n = sel; }
+        this.applyLanguage(langs[n][0]);
+    }
+
+    private void applyLanguage(String code) {
+        String oldDefaultName = Texts.defaultPlayerName;
+        rally3d.core.Lang.set(code);
+        rally3d.desktop.Platform.setLanguage(code);
+        Localization.reset();
+        Texts.reinit();
+        if (this.saveData != null && oldDefaultName != null && oldDefaultName.equals(this.saveData.playerName)) {
+            this.saveData.playerName = Texts.defaultPlayerName;   // the untouched default name follows the language
+            this.saveData.save();
+        }
+        rally3d.core.RLog.i("lang", "language set to " + code);
+    }
+
     void settingsMenu() { /*T*/ final long $t = rally3d.core.Trace.in(101); try {
-        int n = 0;
+        int n = 10;
         int n2 = 1;
         while (true) {
             this.beginMenu(Texts.settingsTitle);
+            // Ordered by importance: graphics / controls first, then gameplay, then cosmetics and developer options.
+            this.addMenuItem(Texts.pcSettings, 10);
+            this.addMenuItem(rally3d.core.Lang.t("Language: ") + rally3d.core.Lang.name(), 22);
+            if (rally3d.desktop.Platform.supportsTouchLayout()) {
+                this.addMenuItem(rally3d.core.Lang.t("Touch buttons size (slider)"), 17);
+                this.addMenuItem(rally3d.core.Lang.t("Touch buttons position (drag)"), 18);
+            }
+            if (this.saveData.autoAccelOff == 0) {
+                this.addMenuItem(Texts.autoAccelOnText, 7);
+            } else {
+                this.addMenuItem(Texts.autoAccelOffText, 7);
+            }
+            if (!rally3d.desktop.Platform.isVanillaMode()) {
+                this.addMenuItem(rally3d.core.Lang.t("Mouse camera: ") + (rally3d.desktop.Platform.isMouseLookEnabled() ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 12);
+            }
             switch (this.saveData.soundLevel) {
                 case 0: {
                     this.addMenuItem(Texts.soundOff, 0);
@@ -4893,37 +5102,31 @@ implements Runnable {
             } else {
                 if (rally3d.desktop.Platform.supportsVibration()) this.addMenuItem(Texts.vibrationOffText, 1);
             }
-            if (this.saveData.autoAccelOff == 0) {
-                this.addMenuItem(Texts.autoAccelOnText, 7);
-            } else {
-                this.addMenuItem(Texts.autoAccelOffText, 7);
-            }
             if (this.saveData.speedKmh == 0) {
                 this.addMenuItem(Texts.speedMphText, 8);
             } else {
                 this.addMenuItem(Texts.speedKmhText, 8);
             }
-            this.addTextFieldMenuItem("Player name: ", this.saveData.playerName, 9, 16);
-            if (rally3d.desktop.Platform.supportsTouchLayout()) {
-                this.addMenuItem("Touch buttons size (slider)", 17);
-                this.addMenuItem("Touch buttons position (drag)", 18);
-            }
-            this.addMenuItem(Texts.pcSettings, 10);
+            this.addTextFieldMenuItem(rally3d.core.Lang.t("Player name: "), this.saveData.playerName, 9, 16);
             if (!rally3d.desktop.Platform.isVanillaMode()) {
-                this.addMenuItem("Menu animations: " + (rally3d.desktop.Platform.areUiAnimationsEnabled() ? "On" : "Off"), 11);
-                this.addMenuItem("Mouse camera: " + (rally3d.desktop.Platform.isMouseLookEnabled() ? "On" : "Off"), 12);
-                this.addMenuItem("Telemetry HUD: " + (rally3d.desktop.Platform.isTelemetryEnabled() ? "On" : "Off"), 14);
+                this.addMenuItem(rally3d.core.Lang.t("Telemetry HUD: ") + (rally3d.desktop.Platform.isTelemetryEnabled() ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 14);
+                this.addMenuItem(rally3d.core.Lang.t("Menu animations: ") + (rally3d.desktop.Platform.areUiAnimationsEnabled() ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 11);
             }
+            this.addMenuItem(rally3d.core.Lang.t("Game version: ") + (rally3d.desktop.Platform.isVanillaMode()
+                    ? rally3d.core.Lang.t("Vanilla — return to Modified") : rally3d.core.Lang.t("Modified — return to Vanilla")), 15);
             if (rally3d.desktop.Platform.fullTraceSupported()) {
-                this.addMenuItem("Full function trace log: " + (rally3d.desktop.Platform.isFullTrace() ? "On (big file)" : "Off"), 16);
+                this.addMenuItem(rally3d.core.Lang.t("Full function trace log: ") + (rally3d.desktop.Platform.isFullTrace() ? rally3d.core.Lang.t("On (big file)") : rally3d.core.Lang.t("Off")), 16);
             }
-            this.addMenuItem("Game version: " + (rally3d.desktop.Platform.isVanillaMode()
-                    ? "Vanilla — return to Modified" : "Modified — return to Vanilla"), 15);
+            this.addMenuItem(rally3d.core.Lang.t("Save progress to a file (backup)"), 20);
+            this.addMenuItem(rally3d.core.Lang.t("Restore progress from a file"), 21);
             this.menuSlideEnabled = n2;
             this.menuExitMode = 0;
             n = this.runMenu(n);
             n2 = 0;
             switch (n) {
+                case 22: { this.languageMenu(false); break; }
+                case 20: { this.backupProgress(); break; }
+                case 21: { this.restoreProgress(); break; }
                 case 0: {
                     this.saveData.soundLevel = (this.saveData.soundLevel + 1) % 4;
                     this.sound.setVolume(this.saveData.soundLevel * 99 / 3);
@@ -4938,7 +5141,7 @@ implements Runnable {
                         break;
                     }
                     this.saveData.vibrationOff = 0;
-                    this.vibrate(500);
+                    this.vibrate(70, 90);
                     break;
                 }
                 case 7: {
@@ -5022,30 +5225,32 @@ implements Runnable {
             boolean fullscreen = rally3d.desktop.Platform.isFullscreen();
             boolean showFps = rally3d.desktop.Platform.isShowFps();
             int fpsValue = rally3d.desktop.Platform.currentFpsLimit();
-            this.beginMenu(rally3d.desktop.Platform.supportsTouchLayout() ? "Display / FPS" : "Display / FPS (PC)");
+            this.beginMenu(rally3d.core.Lang.t("Display / FPS"));
             this.menuSlideEnabled = 0;
-            this.addMenuItem("Resolution: " + rally3d.desktop.Platform.RESOLUTIONS[resolution][0] + " x " + rally3d.desktop.Platform.RESOLUTIONS[resolution][1], 0);
-            this.addMenuItem("Frame limit: " + (fpsValue <= 0 ? "Unlimited" : fpsValue + " FPS") + "  [select]", 1);
-            if (!rally3d.desktop.Platform.supportsTouchLayout()) this.addMenuItem("Fullscreen window (borderless): " + (fullscreen ? "On" : "Off"), 2);
-            this.addMenuItem("FPS counter: " + (showFps ? "On" : "Off"), 3);
-            String[] aaModes = {"Off", "FXAA", "FXAA Quality"};
+            this.addMenuItem(rally3d.core.Lang.t("Resolution: ") + rally3d.desktop.Platform.RESOLUTIONS[resolution][0] + " x " + rally3d.desktop.Platform.RESOLUTIONS[resolution][1] + rally3d.core.Lang.t("  [select]"), 0);
+            this.addMenuItem(rally3d.core.Lang.t("Frame limit: ") + (fpsValue <= 0 ? rally3d.core.Lang.t("Unlimited") : fpsValue + rally3d.core.Lang.t(" FPS")) + rally3d.core.Lang.t("  [select]"), 1);
+            if (!rally3d.desktop.Platform.supportsTouchLayout()) this.addMenuItem(rally3d.core.Lang.t("Fullscreen window (borderless): ") + (fullscreen ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 2);
+            this.addMenuItem(rally3d.core.Lang.t("FPS counter: ") + (showFps ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 3);
+            String[] aaModes = {rally3d.core.Lang.t("Off"), rally3d.core.Lang.t("FXAA"), rally3d.core.Lang.t("FXAA Quality")};
             int aaMode = rally3d.desktop.Platform.antiAliasing();
-            this.addMenuItem("Anti-aliasing: " + aaModes[aaMode], 4);
-            this.addMenuItem("3D renderer: " + (rally3d.desktop.Platform.gpuRaster() ? "GPU" : "Software (multi-core)"), 6);
-            if (!rally3d.desktop.Platform.supportsTouchLayout() && rally3d.desktop.Platform.gpuRaster()) this.addMenuItem("UI renderer: " + (rally3d.desktop.Platform.gpuUiSetting() ? "GPU" : "CPU"), 7);
-            { int ct = rally3d.desktop.Platform.cpuThreadsSetting(); this.addMenuItem("CPU threads: " + (ct <= 0 ? "Auto (" + rally3d.desktop.Platform.cpuThreadsEffective() + ")" : String.valueOf(ct)), 8); }
-            if (rally3d.desktop.Platform.supportsTouchLayout()) this.addMenuItem("Dynamic resolution: " + (rally3d.desktop.Platform.dynamicResolution() ? "On" : "Off"), 10);
-            if (rally3d.desktop.Platform.gpuRaster()) this.addMenuItem("V-sync: " + (rally3d.desktop.Platform.vsync() ? "On" : "Off"), 9);
-            this.addMenuItem("Back", 5);
+            this.addMenuItem(rally3d.core.Lang.t("Anti-aliasing: ") + aaModes[aaMode], 4);
+            this.addMenuItem(rally3d.core.Lang.t("3D renderer: ") + (rally3d.desktop.Platform.gpuRaster() ? rally3d.core.Lang.t("GPU") : rally3d.core.Lang.t("Software (multi-core)")), 6);
+            if (rally3d.desktop.Platform.gpuRaster()) this.addMenuItem(rally3d.core.Lang.t("UI renderer: ") + (rally3d.desktop.Platform.gpuUiSetting() ? rally3d.core.Lang.t("GPU") : rally3d.core.Lang.t("CPU")), 7);
+            { int ct = rally3d.desktop.Platform.cpuThreadsSetting(); this.addMenuItem(rally3d.core.Lang.t("CPU threads: ") + (ct <= 0 ? rally3d.core.Lang.t("Auto (") + rally3d.desktop.Platform.cpuThreadsEffective() + ")" : String.valueOf(ct)), 8); }
+            if (rally3d.desktop.Platform.supportsTouchLayout()) this.addMenuItem(rally3d.core.Lang.t("Dynamic resolution: ") + (rally3d.desktop.Platform.dynamicResolution() ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 10);
+            if (rally3d.desktop.Platform.gpuRaster()) this.addMenuItem(rally3d.core.Lang.t("V-sync: ") + (rally3d.desktop.Platform.vsync() ? rally3d.core.Lang.t("On") : rally3d.core.Lang.t("Off")), 9);
+            this.addMenuItem(rally3d.core.Lang.t("Back"), 5);
             selected = this.runMenu(selected);
             if (selected < 0 || selected == 5) return;
 
-            int nextResolution = resolution;
             int nextFps = fps;
             boolean nextFullscreen = fullscreen;
             boolean nextShowFps = showFps;
             switch (selected) {
-                case 0: nextResolution = (resolution + 1) % rally3d.desktop.Platform.RESOLUTIONS.length; break;
+                case 0: {
+                    this.resolutionSettingsMenu();
+                    continue;
+                }
                 case 1: {
                     this.fpsSettingsMenu();
                     continue;
@@ -5060,9 +5265,9 @@ implements Runnable {
                 case 8: rally3d.desktop.Platform.setCpuThreads(rally3d.desktop.Platform.nextCpuThreads()); continue;
                 default: continue;
             }
-            rally3d.desktop.Platform.configure(nextResolution, nextFps, nextFullscreen, nextShowFps);
+            rally3d.desktop.Platform.configure(resolution, nextFps, nextFullscreen, nextShowFps);
             rally3d.desktop.Platform.save();
-            if (nextResolution != resolution || nextFullscreen != fullscreen) {
+            if (nextFullscreen != fullscreen) {
                 rally3d.desktop.Platform.applyResolution();
                 this.width = this.getWidth();
                 this.height = this.getHeight();
@@ -5073,21 +5278,53 @@ implements Runnable {
         }
      } finally { rally3d.core.Trace.out(102, $t); } }
 
+    /** List of all render resolutions, smallest to largest (like the frame rate list). Picking one applies it and returns. */
+    private void resolutionSettingsMenu() { /*T*/ final long $t = rally3d.core.Trace.in(626); try {
+        final int[][] res = rally3d.desktop.Platform.RESOLUTIONS;
+        Integer[] order = new Integer[res.length];
+        for (int i = 0; i < order.length; i++) order[i] = i;
+        java.util.Arrays.sort(order, new java.util.Comparator<Integer>() {
+            public int compare(Integer x, Integer y) { /*T*/ final long $t = rally3d.core.Trace.in(625); try {
+                long ax = (long) res[x][0] * res[x][1], ay = (long) res[y][0] * res[y][1];
+                if (ax != ay) return ax < ay ? -1 : 1;
+                return res[x][0] - res[y][0];
+             } finally { rally3d.core.Trace.out(625, $t); } }
+        });
+        int current = rally3d.desktop.Platform.resolutionIndex();
+        this.beginMenu(rally3d.core.Lang.t("Resolution"));
+        this.menuSlideEnabled = 0;
+        for (int k = 0; k < order.length; k++) {
+            int idx = order[k];
+            this.addMenuItem(res[idx][0] + " x " + res[idx][1] + (idx == current ? rally3d.core.Lang.t("  [selected]") : ""), idx);
+        }
+        this.addMenuItem(rally3d.core.Lang.t("Back"), res.length);
+        int selected = this.runMenu(current);
+        if (selected < 0 || selected >= res.length || selected == current) return;
+        rally3d.desktop.Platform.configure(selected, rally3d.desktop.Platform.fpsIndex(), rally3d.desktop.Platform.isFullscreen(), rally3d.desktop.Platform.isShowFps());
+        rally3d.desktop.Platform.save();
+        rally3d.desktop.Platform.applyResolution();
+        this.width = this.getWidth();
+        this.height = this.getHeight();
+        this.graphics = this.getGraphics();
+        this.loadedScreen = -1;
+        this.loadScreen(2, 0);
+     } finally { rally3d.core.Trace.out(626, $t); } }
+
     private void fpsSettingsMenu() { /*T*/ final long $t = rally3d.core.Trace.in(103); try {
         int selected = 0;
         while (true) {
             int current = rally3d.desktop.Platform.currentFpsLimit();
-            this.beginMenu("Frame rate limit");
+            this.beginMenu(rally3d.core.Lang.t("Frame rate limit"));
             this.menuSlideEnabled = 0;
             int currentIndex = -1;
             for (int i = 0; i < rally3d.desktop.Platform.FPS_VALUES.length; i++) {
                 int value = rally3d.desktop.Platform.FPS_VALUES[i];
                 if (value == current) currentIndex = i;
-                this.addMenuItem((value <= 0 ? "Unlimited" : value + " FPS") + (value == current ? "  [selected]" : ""), i);
+                this.addMenuItem((value <= 0 ? rally3d.core.Lang.t("Unlimited") : value + rally3d.core.Lang.t(" FPS")) + (value == current ? rally3d.core.Lang.t("  [selected]") : ""), i);
             }
             int customIndex = rally3d.desktop.Platform.FPS_VALUES.length;
-            this.addMenuItem("Custom value..." + (currentIndex < 0 ? "  [" + (current <= 0 ? "Unlimited" : current + " FPS") + " selected]" : ""), customIndex);
-            this.addMenuItem("Back", customIndex + 1);
+            this.addMenuItem(rally3d.core.Lang.t("Custom value...") + (currentIndex < 0 ? "  [" + (current <= 0 ? rally3d.core.Lang.t("Unlimited") : current + rally3d.core.Lang.t(" FPS")) + rally3d.core.Lang.t(" selected]") : ""), customIndex);
+            this.addMenuItem(rally3d.core.Lang.t("Back"), customIndex + 1);
             selected = this.runMenu(selected);
             if (selected < 0 || selected == customIndex + 1) return;
             if (selected >= 0 && selected < rally3d.desktop.Platform.FPS_VALUES.length) {
@@ -5095,7 +5332,7 @@ implements Runnable {
                 return;
             }
             if (selected == customIndex) {
-                String entered = this.editTextInGame("Frame rate limit", "Custom FPS (30-1000): ", String.valueOf(current), 4);
+                String entered = this.editTextInGame(rally3d.core.Lang.t("Frame rate limit"), rally3d.core.Lang.t("Custom FPS (30-1000): "), String.valueOf(current), 4);
                 if (entered == null) continue;
                 try {
                     int limit = Integer.parseInt(entered.trim());
@@ -5104,7 +5341,7 @@ implements Runnable {
                         return;
                     }
                 } catch (NumberFormatException ignored) { rally3d.core.RLog.caught("RallyGame.fpsSettingsMenu", ignored); }
-                this.showMessage("Invalid FPS limit", "Enter a whole number from 30 to 1000");
+                this.showMessage(rally3d.core.Lang.t("Invalid FPS limit"), rally3d.core.Lang.t("Enter a whole number from 30 to 1000"));
             }
         }
      } finally { rally3d.core.Trace.out(103, $t); } }
@@ -5145,6 +5382,9 @@ implements Runnable {
         this.resetTimer();
         this.initFonts();
         this.textsInstance = new Texts();
+        String savedLang = rally3d.desktop.Platform.getLanguage();
+        boolean askLanguage = !rally3d.core.Lang.isKnown(savedLang);   // first launch (or an unknown value): the player picks the language below
+        rally3d.core.Lang.set(askLanguage ? rally3d.core.Lang.detect() : savedLang);
         Texts.init(0, this.getKeyName(this.getKeyCode(8)), this.getKeyName(this.getKeyCode(2)), this.getKeyName(this.getKeyCode(5)), this.getKeyName(this.getKeyCode(1)), this.getKeyName(this.getKeyCode(6)), 4, 8);
         this.saveData = new SaveData(Texts.defaultPlayerName);
         if (this.fontBoldHeight < this.saveData.fontHeightBold) {
@@ -5164,6 +5404,10 @@ implements Runnable {
         this.loadScreen(2, 0);
         this.display.setCurrent((Displayable)this);
         this.clearKeys();
+        if (askLanguage) {
+            this.loadScreen(2, 0);
+            this.languageMenu(true);
+        }
         while (true) {
             this.loadScreen(2, 0);
             this.beginMenu(null);
@@ -5175,8 +5419,9 @@ implements Runnable {
             this.addMenuItem(Texts.newGame, 0);
             this.addMenuItem(Texts.multiplayer, 6);
             this.addMenuItem(Texts.highScores, 3);
-            this.addMenuItem("Add-ons", 9);
-            this.addMenuItem("Map Editor", 10);
+            this.addMenuItem(rally3d.core.Lang.t("Add-ons"), 9);
+            this.addMenuItem(rally3d.core.Lang.t("Map Editor"), 10);
+            this.addMenuItem(rally3d.core.Lang.t("Car Builder"), 11);
             this.addMenuItem(Texts.settings, 4);
             this.addMenuItem(Texts.instructions, 5);
             this.rightSoftkeyLabel = Texts.exit;
@@ -5206,13 +5451,12 @@ implements Runnable {
                     this.mapEditorMenu(null);
                     break;
                 }
+                case 11: {
+                    this.carEditorMenu(null);
+                    break;
+                }
                 case 5: {
-                    String string;
-                    if (Texts.rightToLeft) {
-                        string = Texts.helpPages[5] + "||" + Texts.helpPages[4] + "||" + Texts.helpPages[3] + "||" + Texts.helpPages[2] + "||" + Texts.helpPages[1] + "||" + Texts.helpPages[0];
-                    } else {
-                        string = Texts.helpPages[0] + "||" + Texts.helpPages[1] + "||" + Texts.helpPages[2] + "||" + Texts.helpPages[3] + "||" + Texts.helpPages[4] + "||" + Texts.helpPages[5];
-                    }
+                    String string = HelpPages.all(java.util.Arrays.copyOf(Texts.helpPages, 6), Texts.rightToLeft);
                     this.showTextScreen(Texts.instructionsTitle, string, 0L, 0);
                     break;
                 }

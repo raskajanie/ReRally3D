@@ -129,6 +129,7 @@ public final class AndroidLog implements RLog.Sink {
         dir.mkdirs();
         instance = new AndroidLog(dir);
         RLog.setSink(instance);
+        rally3d.core.LogView.exportButton = true;   // the log file is in Android/data: offer EXPORT (system file picker) in the log overlay
         System.setOut(new PrintStream(new LineSink(RLog.INFO, "stdout"), true));
         System.setErr(new PrintStream(new LineSink(RLog.WARN, "stderr"), true));
         RLog.i("app", "==== Rally3D start ==== " + Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE
